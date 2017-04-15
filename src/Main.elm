@@ -290,26 +290,18 @@ background model =
 iconButton : String -> msg -> Html msg
 iconButton icon msg =
     button
-        [ style
+        [ class "icon-button"
+        , style
             [ ( "border", "0" )
             , ( "outline", "0" )
             , ( "background", "white" )
             , ( "margin", "5px" )
             , ( "padding", "4px" )
             , ( "border-radius", "2px" )
-            , ( "width", "40px" )
-            , ( "height", "40px" )
             ]
         , onClick msg
         ]
-        [ img
-            [ src icon
-            , style
-                [ ( "width", "32px" )
-                , ( "height", "32px" )
-                ]
-            ]
-            []
+        [ img [ src icon ] []
         ]
 
 

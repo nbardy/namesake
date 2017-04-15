@@ -9,9 +9,9 @@ import Debug exposing (log)
 
 renderPerspective : Model -> Collage.Form
 renderPerspective model =
-    List.range 1 120
-        |> List.map ((*) 23)
+    List.range 1 24
         |> List.map toFloat
+        |> List.map ((*) (1 / 24))
         |> List.reverse
         |> List.map (renderSquare model)
         |> Collage.group
@@ -24,13 +24,16 @@ renderSquare model size =
             model.mouse
 
         color =
-            (colorFromRainbow 0.009 size)
+            (colorFromRainbow 2.9 size)
+
+        { width, height } =
+            model.windowSize
 
         rate =
-            240
+            1
 
         powa =
-            0.19
+            0.69
 
         row =
             tween ( toFloat mouseRow, 0 ) (((size / rate) ^ powa))
@@ -38,6 +41,6 @@ renderSquare model size =
         col =
             tween ( toFloat mouseCol, 0 ) (((size / rate) ^ powa))
     in
-        Collage.square size
+        Collage.rect (toFloat width * size) (toFloat height * size)
             |> Collage.filled color
             |> Collage.move ( row, col )
