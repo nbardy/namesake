@@ -2,7 +2,7 @@ module Main exposing (Msg)
 
 import Html exposing (..)
 import Html.Attributes exposing (..)
-import Html.Events exposing (onClick)
+import Html.Events exposing (onMouseDown)
 import Math.Vector2 exposing (vec2, direction, scale, toTuple)
 
 
@@ -299,7 +299,7 @@ iconButton icon msg =
             , ( "padding", "4px" )
             , ( "border-radius", "2px" )
             ]
-        , onClick msg
+        , onMouseDown msg
         ]
         [ img [ src icon ] []
         ]
@@ -331,7 +331,7 @@ view model =
                     "close"
                 )
             ]
-            [ div [ id "popup-backdrop", onClick PopupToggle ] []
+            [ div [ id "popup-backdrop", onMouseDown PopupToggle ] []
             , div [ id "info-modal" ]
                 [ p [] [ text "Hello, My name is Nicholas Bardy. I'm a surfer, eater, dreamer, sleeper, wanderer, and software developer by trade." ]
                 , p []
