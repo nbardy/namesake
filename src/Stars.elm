@@ -55,9 +55,9 @@ randomStar model ( row, col ) =
             (Random.pair (Random.float (toFloat row) (toFloat (row + padding)))
                 (Random.float (toFloat col) (toFloat (col + padding)))
             )
-            (Random.pair (Random.float 0 0.7) (Random.float 0.4 1))
-            (Random.float 0 10000)
-            (Random.float 500 2000)
+            (Random.pair (Random.float 0 0.4) (Random.float 0.4 1))
+            (Random.float 0 1000)
+            (Random.float 500 2400)
             randomStarColor
 
 
