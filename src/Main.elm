@@ -73,18 +73,13 @@ update msg model =
     case msg of
         MousePos ( x, y ) ->
             let
-                width =
-                    toFloat model.windowSize.width
+                xshift =
+                    round ((toFloat model.windowSize.width) / 2)
 
-                height =
-                    toFloat model.windowSize.height
+                yshift =
+                    round ((toFloat model.windowSize.height) / 2)
             in
-                ( { model
-                    | mouse =
-                        ( (x - (round (width / 2)))
-                        , ((round (height / 2)) - y)
-                        )
-                  }
+                ( { model | mouse = ( (x - xshift), (yshift - y) ) }
                 , Cmd.none
                 )
 
@@ -114,24 +109,19 @@ subscriptions model =
         ]
 
 
-
--- Sub.batch
---     [ Time.every Time.second <| always Tick
---     ]
-
-
 distance : Pos -> Pos -> Float
 distance ( x0, y0 ) ( x1, y1 ) =
     ((x0 - x1) ^ 2 + (y0 - y1) ^ 2) |> toFloat |> sqrt
 
 
-
--- TODO Thing about making mouse unit based
-
-
 mouseRowFloat : Pos -> Float
 mouseRowFloat mouse =
     toFloat (Tuple.first mouse)
+
+
+mouseColFloat : Pos -> Float
+mouseColFloat mouse =
+    toFloat (Tuple.second mouse)
 
 
 intTupleToVec : Pos -> Math.Vector2.Vec2
@@ -154,10 +144,15 @@ renderSpinners : Model -> Collage.Form
 renderSpinners model =
     let
         spinningRects =
-            gridPoints model.config.padding model.windowSize |> List.map (renderSpinner model) |> Collage.group
+            gridPoints model.config.padding model.windowSize
+                |> List.map (renderSpinner model)
+                |> Collage.group
+
+        color =
+            (colorFromRainbow 0.001 (2000 + (mouseRowFloat model.mouse)))
 
         background =
-            fillBackground model.windowSize (colorFromRainbow 0.001 (2000 + (mouseRowFloat model.mouse)))
+            fillBackground model.windowSize color
     in
         [ background, spinningRects ] |> Collage.group
 
@@ -165,11 +160,8 @@ renderSpinners model =
 renderSpinner : Model -> Pos -> Collage.Form
 renderSpinner { config, windowSize, mouse, t } ( row, col ) =
     let
-        padding =
-            config.padding
-
-        d =
-            (distance ( row, col ) mouse)
+        color =
+            (colorFromRainbow 0.004 (mouseColFloat mouse))
 
         size =
             (mouseRowFloat mouse)
@@ -178,7 +170,7 @@ renderSpinner { config, windowSize, mouse, t } ( row, col ) =
                 |> (-) (toFloat config.padding)
     in
         Collage.square size
-            |> Collage.filled (colorFromRainbow 0.004 (toFloat (Tuple.second mouse)))
+            |> Collage.filled color
             |> Collage.move ( toFloat row, toFloat col )
             |> Collage.rotate (degrees (t / 40))
 
@@ -187,14 +179,17 @@ renderEye : Model -> Pos -> Collage.Form
 renderEye { config, windowSize, mouse } ( row, col ) =
     let
         padding =
-            config.padding
+            toFloat config.padding
 
         vectorTowardsMouse =
             directionalVector mouse ( row, col )
     in
-        [ Collage.circle ((toFloat config.padding) / 2)
+        [ Collage.circle (padding / 2)
             |> Collage.filled (Color.rgb 123 123 20)
-            |> Collage.move ( toFloat (row * padding), toFloat (col * padding) )
+            |> Collage.move
+                ( (toFloat row) * padding
+                , (toFloat col) * padding
+                )
         , Collage.circle 12
             |> Collage.filled (Color.rgb 255 255 255)
             |> Collage.move ( toFloat row, toFloat col )
@@ -206,15 +201,8 @@ renderEye { config, windowSize, mouse } ( row, col ) =
 rainbowDot : Model -> Pos -> Collage.Form
 rainbowDot { config, windowSize, mouse } ( row, col ) =
     let
-        padding =
-            config.padding
-
-        -- TODO: Add rows, and cols to config
-        rows =
-            windowSize.width // padding
-
         cols =
-            windowSize.height // padding
+            windowSize.height // config.padding
 
         ( mouseRow, mouseCol ) =
             mouse
@@ -222,33 +210,18 @@ rainbowDot { config, windowSize, mouse } ( row, col ) =
         mouseN =
             mouseRow * cols + mouseCol
 
-        totalCells =
-            (toFloat (rows * cols) / 2)
-
-        d =
-            (distance ( row, col ) mouse)
-
-        n =
-            d / 10
+        dist =
+            (distance ( row, col ) mouse) / 10
 
         speed =
             92 / toFloat (windowSize.height)
 
         -- round (((sin (toFloat (n + 6) / 10)) * 122.5) + 122.5)
     in
-        Collage.square (toFloat padding)
+        Collage.square (toFloat config.padding)
             --((350 - (d / 2)) ^ 0.52)
-            |> Collage.filled (colorFromRainbow speed n)
+            |> Collage.filled (colorFromRainbow speed dist)
             |> Collage.move ( toFloat row, toFloat col )
-
-
-
---- Okay now that I've payed around with stuff this is draft stage.
---- Make a concrete plan tomorrow.
--- TODO:  ATTENION
--- Maybe just do a bunch of different color shading of this one background.
--- Is there enough cool ways to Make the background change on mouse move
--- Click allows change color scheme
 
 
 name : Collage.Form
@@ -272,7 +245,9 @@ background : Model -> Collage.Form
 background model =
     case model.background of
         Rainbow ->
-            gridPoints model.config.padding model.windowSize |> List.map (rainbowDot model) |> Collage.group
+            gridPoints model.config.padding model.windowSize
+                |> List.map (rainbowDot model)
+                |> Collage.group
 
         NGon ->
             ngon model

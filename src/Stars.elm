@@ -14,9 +14,6 @@ import Color exposing (Color)
 import Types exposing (..)
 
 
--- TODO: Refactor cols to model
-
-
 type alias Star =
     { radius : Float
     , pos : ( Float, Float )
@@ -25,10 +22,6 @@ type alias Star =
     , cycleDuration : Float
     , color : Color.Color
     }
-
-
-
--- TODO: Remove padding scaling. Do everything at pixel scale
 
 
 randomStarColor =
