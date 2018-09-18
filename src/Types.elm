@@ -3,6 +3,8 @@ module Types exposing (..)
 import Window
 import Time
 
+import Dict
+
 
 type alias Pos =
     ( Int, Int )
@@ -19,6 +21,7 @@ type Background
     | NGon
     | Spinners
     | Stars
+    | Drag
     | Perspective
 
 
@@ -29,4 +32,6 @@ type alias Model =
     , windowSize : Window.Size
     , t : Time.Time
     , popup : Bool
+    , filledIn : List Pos
+    , filledInDict : Dict.Dict Pos Bool
     }
