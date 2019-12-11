@@ -192,10 +192,19 @@ renderItem model (row,col) =
             + ( toFloat (row % 2) * poly_shift)
         y = (toFloat row * poly_spacing_height)
 
-        color = if (row % 2) == 0  then 20 else 120
+        (r,g,b) = 
+            if ((row % 4) == 1) && ((col % 2) == 0) then 
+                (160, 20, 13)
+            else if ((col % 2) == 0) && ((row % 3) == 0) then 
+                (80, 0, 80)
+            else if ((row % 3) == 0) && ((col % 3) == 0) then 
+                (40, 12, 120)
+            else 
+                (20, 20, 0)
+
     in
         (Collage.ngon poly_sides poly_radius)
-        |> Collage.filled (Color.rgb color 20 20)
+        |> Collage.filled (Color.rgb r g b)
         |> Collage.move 
             ( x , y) 
 
@@ -364,7 +373,6 @@ view model =
     , iconButton "assets/stars.png" (BackgroundChange Stars)
     , iconButton "assets/rainbow.png" (BackgroundChange Rainbow)
     , iconButton "assets/overlap.png" (BackgroundChange Spinners)
-    , iconButton "assets/hexagon.png" (BackgroundChange NGon)
     ]
     , div [ id "info-button" ]
     [ iconButton "assets/question.png" PopupToggle ]
