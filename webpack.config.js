@@ -1,17 +1,17 @@
-var CleanWebpackPlugin = require('clean-webpack-plugin');
-var CopyWebpackPlugin = require('copy-webpack-plugin');
+var CleanWebpackPlugin = require("clean-webpack-plugin");
+var CopyWebpackPlugin = require("copy-webpack-plugin");
 
 module.exports = {
-  entry: './src/index.js',
+  entry: "./src/index.js",
 
   output: {
-    path: './dist',
-    filename: 'index.js'
+    path: "./docs",
+    filename: "index.js"
   },
 
   resolve: {
-    modulesDirectories: ['node_modules'],
-    extensions: ['', '.js', '.elm']
+    modulesDirectories: ["node_modules"],
+    extensions: ["", ".js", ".elm"]
   },
 
   module: {
@@ -19,12 +19,12 @@ module.exports = {
       {
         test: /\.html$/,
         exclude: /node_modules/,
-        loader: 'file?name=[name].[ext]'
+        loader: "file?name=[name].[ext]"
       },
       {
         test: /\.elm$/,
         exclude: [/elm-stuff/, /node_modules/],
-        loader: 'elm-hot!elm-webpack?verbose=true&warn=true'
+        loader: "elm-hot!elm-webpack?verbose=true&warn=true"
       }
     ],
 
@@ -32,17 +32,16 @@ module.exports = {
   },
 
   plugins: [
-    new CleanWebpackPlugin(['dist'], {
+    new CleanWebpackPlugin(["dist"], {
       root: __dirname,
-      verbose: true, 
+      verbose: true,
       dry: false
     }),
-    new CopyWebpackPlugin([
-      { from: 'src/assets', to: 'assets'}
-    ])
+    new CopyWebpackPlugin([{ from: "src/assets", to: "assets" }])
   ],
 
   devServer: {
-    stats: 'errors-only'
+    stats: "errors-only"
   }
 };
+
