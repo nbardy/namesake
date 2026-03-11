@@ -102,50 +102,48 @@
     '  vec2 m2=mix(center,m,0.5);',   // middle layer: 1/2 speed
     '  vec2 m3=m;',                     // top layer: full speed
     '',
-    // height fields: each layer has its own falloff rate for sizing
-    // top ~20% screen radius, mid 1.8x, bottom 2.2x mid (total ~80%)
-    // Map angle to circle in noise space: (cos,sin) wraps seamlessly
+    // Each layer: fixed base radius + noise offsets the edge.
+    // No height-field slicing — band width is constant.
+    // Noise samples use (cos,sin) for seamless angular wrap.
+    '',
+    // Layer 1 (bottom): base radius 0.79, noise shifts edge ~15%
     '  vec2 d1=p-m1; float dist1=length(d1); float ang1=atan(d1.y,d1.x);',
-    '  float n1=fbm(vec2(cos(ang1),sin(ang1))*0.8+vec2(dist1*2.0+u_time*0.015,u_time*0.02));',
-    '  float h1=clamp((1.0-dist1*1.26)+n1*0.35,0.0,1.0);',
+    '  float warp1=fbm(vec2(cos(ang1),sin(ang1))*0.8+vec2(u_time*0.015,u_time*0.02))*0.12;',
+    '  float edge1=0.79+warp1;',
+    '  float fill1=smoothstep(edge1+0.02,edge1-0.02,dist1);',
+    '  float outline1=smoothstep(edge1+0.02,edge1,dist1)*smoothstep(edge1-0.04,edge1-0.02,dist1);',
+    '  vec3 fillCol1=vec3(0.25,0.02,0.01);',
+    '  vec3 col1=vec3(0.45,0.04,0.02);',
     '',
+    // Layer 2 (middle): base radius 0.36, noise shifts edge ~12%
     '  vec2 d2=p-m2; float dist2=length(d2); float ang2=atan(d2.y,d2.x);',
-    '  float n2=fbm(vec2(cos(ang2),sin(ang2))*0.8+vec2(dist2*2.0+u_time*0.015,u_time*0.02)+3.7);',
-    '  float h2=clamp((1.0-dist2*2.78)+n2*0.35,0.0,1.0);',
+    '  float warp2=fbm(vec2(cos(ang2),sin(ang2))*0.8+vec2(u_time*0.015,u_time*0.02)+3.7)*0.09;',
+    '  float edge2=0.36+warp2;',
+    '  float fill2=smoothstep(edge2+0.02,edge2-0.02,dist2);',
+    '  float outline2=smoothstep(edge2+0.02,edge2,dist2)*smoothstep(edge2-0.04,edge2-0.02,dist2);',
+    '  vec3 fillCol2=vec3(0.55,0.08,0.02);',
+    '  vec3 col2=vec3(0.85,0.2,0.04);',
     '',
+    // Layer 3 (top): base radius 0.2, noise shifts edge ~8%
     '  vec2 d3=p-m3; float dist3=length(d3); float ang3=atan(d3.y,d3.x);',
-    '  float n3=fbm(vec2(cos(ang3),sin(ang3))*0.8+vec2(dist3*2.0+u_time*0.015,u_time*0.02)+7.1);',
-    '  float h3=clamp((1.0-dist3*5.0)+n3*0.35,0.0,1.0);',
+    '  float warp3=fbm(vec2(cos(ang3),sin(ang3))*0.8+vec2(u_time*0.015,u_time*0.02)+7.1)*0.06;',
+    '  float edge3=0.2+warp3;',
+    '  float fill3=smoothstep(edge3+0.015,edge3-0.015,dist3);',
+    '  float outline3=smoothstep(edge3+0.015,edge3,dist3)*smoothstep(edge3-0.03,edge3-0.015,dist3);',
+    '  vec3 fillCol3=vec3(0.8,0.3,0.06);',
+    '  vec3 col3=vec3(1.0,0.6,0.15);',
     '',
     // base color
     '  vec3 base=vec3(0.04,0.01,0.07);',
     '',
-    // Slice 1 (bottom, widest, from h1): z in [0.2, 0.4]
-    '  float s1=smoothstep(0.18,0.22,h1)*smoothstep(0.42,0.38,h1);',
-    '  float fill1=smoothstep(0.18,0.22,h1);',
-    '  vec3 col1=vec3(0.45,0.04,0.02);',
-    '  vec3 fillCol1=vec3(0.25,0.02,0.01);',
-    '',
-    // Slice 2 (middle, from h2): z in [0.5, 0.6]
-    '  float s2=smoothstep(0.48,0.52,h2)*smoothstep(0.62,0.58,h2);',
-    '  float fill2=smoothstep(0.48,0.52,h2);',
-    '  vec3 col2=vec3(0.85,0.2,0.04);',
-    '  vec3 fillCol2=vec3(0.55,0.08,0.02);',
-    '',
-    // Slice 3 (top, from h3): z in [0.8, 0.95]
-    '  float s3=smoothstep(0.78,0.82,h3)*smoothstep(0.97,0.93,h3);',
-    '  float fill3=smoothstep(0.78,0.82,h3);',
-    '  vec3 col3=vec3(1.0,0.6,0.15);',
-    '  vec3 fillCol3=vec3(0.8,0.3,0.06);',
-    '',
-    // compose: fills then contour outlines
+    // compose: fills then outlines
     '  vec3 color=base;',
     '  color=mix(color,fillCol1,fill1);',
     '  color=mix(color,fillCol2,fill2);',
     '  color=mix(color,fillCol3,fill3);',
-    '  color=mix(color,col1,s1);',
-    '  color=mix(color,col2,s2);',
-    '  color=mix(color,col3,s3);',
+    '  color=mix(color,col1,outline1);',
+    '  color=mix(color,col2,outline2);',
+    '  color=mix(color,col3,outline3);',
     '',
     '  color*=1.0-0.3*length(uv-0.5);',
     '  gl_FragColor=vec4(color,1.0);',
