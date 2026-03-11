@@ -9,19 +9,22 @@ h1 {
 
 /* ── WebGL effects canvas ── */
 
+/* WebGL canvas overlays the Elm canvas when active.
+   z-index 10 sits above Elm's canvas (auto/0) but below UI (900+) */
 #fx-canvas {
   position: fixed;
   top: 0;
   left: 0;
   width: 100vw;
   height: 100vh;
-  z-index: 1;
+  z-index: 10;
   pointer-events: none;
-  display: none;
+  opacity: 0;
+  transition: opacity 0.4s;
 }
 
 #fx-canvas.fx-active {
-  display: block;
+  opacity: 1;
 }
 
 /* ── Background buttons (top-left) — no box, just floating ── */
