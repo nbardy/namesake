@@ -93,54 +93,54 @@
     '  vec2 uv=gl_FragCoord.xy/u_res;',
     '  float aspect=u_res.x/u_res.y;',
     '',
-    // radial coords from mouse
+    // three mouse centers: parallax (top=1x, mid=0.5x, bottom=0.25x)
     '  vec2 mUV=u_mouse/u_res;',
     '  vec2 p=vec2(uv.x*aspect,uv.y);',
+    '  vec2 center=vec2(0.5*aspect,0.5);',
     '  vec2 m=vec2(mUV.x*aspect,mUV.y);',
-    '  vec2 diff=p-m;',
-    '  float dist=length(diff);',
-    '  float angle=atan(diff.y,diff.x);',
+    '  vec2 m1=mix(center,m,0.25);',  // bottom layer: 1/4 speed
+    '  vec2 m2=mix(center,m,0.5);',   // middle layer: 1/2 speed
+    '  vec2 m3=m;',                     // top layer: full speed
     '',
-    // Height field: radial falloff * (1 + noise) gives a noisy mountain
-    // FBM sampled in radial coords so the shape is organic
-    '  float noise=fbm(vec2(angle*0.8+u_time*0.02,dist*2.0+u_time*0.015));',
-    // mountain shape: peaks at mouse (dist=0), decays outward
-    // noise warps the slope so contours are blobby, not circular
-    '  float h=(1.0-dist*1.8)+noise*0.35;',
-    '  h=clamp(h,0.0,1.0);',
+    // height field helper: noisy mountain from a given center
+    '  vec2 d1=p-m1; float dist1=length(d1); float ang1=atan(d1.y,d1.x);',
+    '  float n1=fbm(vec2(ang1*0.8+u_time*0.02,dist1*2.0+u_time*0.015));',
+    '  float h1=clamp((1.0-dist1*1.8)+n1*0.35,0.0,1.0);',
+    '',
+    '  vec2 d2=p-m2; float dist2=length(d2); float ang2=atan(d2.y,d2.x);',
+    '  float n2=fbm(vec2(ang2*0.8+u_time*0.02+3.7,dist2*2.0+u_time*0.015));',
+    '  float h2=clamp((1.0-dist2*1.8)+n2*0.35,0.0,1.0);',
+    '',
+    '  vec2 d3=p-m3; float dist3=length(d3); float ang3=atan(d3.y,d3.x);',
+    '  float n3=fbm(vec2(ang3*0.8+u_time*0.02+7.1,dist3*2.0+u_time*0.015));',
+    '  float h3=clamp((1.0-dist3*1.8)+n3*0.35,0.0,1.0);',
     '',
     // base color
     '  vec3 base=vec3(0.04,0.01,0.07);',
     '',
-    // Slice 1 (bottom, widest): z in [0.2, 0.4]
-    '  float s1=smoothstep(0.18,0.22,h)*smoothstep(0.42,0.38,h);',
+    // Slice 1 (bottom, widest, from h1): z in [0.2, 0.4]
+    '  float s1=smoothstep(0.18,0.22,h1)*smoothstep(0.42,0.38,h1);',
+    '  float fill1=smoothstep(0.18,0.22,h1);',
     '  vec3 col1=vec3(0.45,0.04,0.02);',
-    '',
-    // Slice 2 (middle): z in [0.5, 0.6]
-    '  float s2=smoothstep(0.48,0.52,h)*smoothstep(0.62,0.58,h);',
-    '  vec3 col2=vec3(0.85,0.2,0.04);',
-    '',
-    // Slice 3 (top, smallest): z in [0.8, 0.95]
-    '  float s3=smoothstep(0.78,0.82,h)*smoothstep(0.97,0.93,h);',
-    '  vec3 col3=vec3(1.0,0.6,0.15);',
-    '',
-    // Also fill the interior of each slice for the lava-lamp look
-    // Bottom fill: anything above 0.2
-    '  float fill1=smoothstep(0.18,0.22,h);',
     '  vec3 fillCol1=vec3(0.25,0.02,0.01);',
-    // Middle fill: anything above 0.5
-    '  float fill2=smoothstep(0.48,0.52,h);',
+    '',
+    // Slice 2 (middle, from h2): z in [0.5, 0.6]
+    '  float s2=smoothstep(0.48,0.52,h2)*smoothstep(0.62,0.58,h2);',
+    '  float fill2=smoothstep(0.48,0.52,h2);',
+    '  vec3 col2=vec3(0.85,0.2,0.04);',
     '  vec3 fillCol2=vec3(0.55,0.08,0.02);',
-    // Top fill: anything above 0.8
-    '  float fill3=smoothstep(0.78,0.82,h);',
+    '',
+    // Slice 3 (top, from h3): z in [0.8, 0.95]
+    '  float s3=smoothstep(0.78,0.82,h3)*smoothstep(0.97,0.93,h3);',
+    '  float fill3=smoothstep(0.78,0.82,h3);',
+    '  vec3 col3=vec3(1.0,0.6,0.15);',
     '  vec3 fillCol3=vec3(0.8,0.3,0.06);',
     '',
-    // compose: fills first, then contour outlines on top
+    // compose: fills then contour outlines
     '  vec3 color=base;',
     '  color=mix(color,fillCol1,fill1);',
     '  color=mix(color,fillCol2,fill2);',
     '  color=mix(color,fillCol3,fill3);',
-    // contour lines are brighter edges of each slice
     '  color=mix(color,col1,s1);',
     '  color=mix(color,col2,s2);',
     '  color=mix(color,col3,s3);',
