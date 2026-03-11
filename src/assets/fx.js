@@ -72,83 +72,8 @@
     '}'
   ].join('\n');
 
-  var HASH_GLSL = [
-    'float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);}'
-  ].join('\n');
-
   // ── Vertex shader (fullscreen quad) ──
   var VERT = 'attribute vec2 a_pos;void main(){gl_Position=vec4(a_pos,0.0,1.0);}';
-
-  // ── Stars fragment shader ──
-  // Same look as original Elm stars (sizes, colors, twinkle).
-  // Only change: FBM density field controls WHERE stars appear,
-  // giving organic clustering + voids instead of uniform grid.
-  var FRAG_STARS = [
-    'precision highp float;',
-    'uniform float u_time;',
-    'uniform vec2 u_res;',
-    NOISE_GLSL,
-    FBM_GLSL,
-    HASH_GLSL,
-    '',
-    // Original Elm star color palette (7 temperatures)
-    'vec3 starColor(float t){',
-    '  if(t<0.14) return vec3(0.608,0.690,1.0);',    // rgb(155,176,255)
-    '  if(t<0.28) return vec3(0.667,0.749,1.0);',    // rgb(170,191,255)
-    '  if(t<0.42) return vec3(0.792,0.843,1.0);',    // rgb(202,215,255)
-    '  if(t<0.57) return vec3(0.973,0.969,1.0);',    // rgb(248,247,255)
-    '  if(t<0.71) return vec3(1.0,0.957,0.918);',    // rgb(255,244,234)
-    '  if(t<0.85) return vec3(1.0,0.824,0.631);',    // rgb(255,210,161)
-    '  return vec3(1.0,0.800,0.435);',                // rgb(255,204,111)
-    '}',
-    '',
-    'void main(){',
-    '  vec2 uv=gl_FragCoord.xy/u_res;',
-    '  float aspect=u_res.x/u_res.y;',
-    '  vec2 p=vec2(uv.x*aspect,uv.y);',
-    '',
-    // plain black sky
-    '  vec3 color=vec3(0.0);',
-    '',
-    // FBM density field — only controls distribution
-    '  float density=fbm(p*2.5+vec2(13.7,7.3))*0.5+0.5;',
-    '  density=smoothstep(0.15,0.7,density);',
-    '',
-    // stars at one scale matching the Elm grid (~1-6 per cell)
-    '  float scale=25.0;',
-    '  vec2 cell=floor(uv*scale);',
-    '  vec2 cellUV=fract(uv*scale);',
-    '',
-    // 1-6 stars per cell (same as Elm), but only in dense areas
-    '  float maxStars=1.0+5.0*density;',
-    '  for(float i=0.0;i<6.0;i++){',
-    '    if(i>=maxStars) break;',
-    // random position within cell
-    '    vec2 spos=vec2(hash(cell+vec2(i*13.0,i*7.0)),hash(cell+vec2(i*7.0,i*31.0)));',
-    '    float d=length(cellUV-spos);',
-    // original Elm radius: 0-1, mapped to small screen dots
-    '    float radius=hash(cell+vec2(i*43.0,i*17.0));',
-    '    float sz=0.01+radius*0.03;',
-    '    float star=smoothstep(sz,0.0,d);',
-    '',
-    // twinkle: sine between brightness range, same as Elm
-    '    float bLow=hash(cell+vec2(i*59.0,i*97.0))*0.4;',
-    '    float bHigh=0.4+hash(cell+vec2(i*71.0,i*83.0))*0.6;',
-    '    float phase=hash(cell+vec2(i*37.0,i*53.0))*6.2832;',
-    '    float cyc=500.0+hash(cell+vec2(i*23.0,i*67.0))*1900.0;',
-    '    float tw=0.5+0.5*sin(u_time*1000.0/cyc+phase);',
-    '    float brightness=mix(bLow,bHigh,tw);',
-    '',
-    // color from original palette
-    '    float temp=hash(cell+vec2(i*89.0,i*41.0));',
-    '    vec3 sc=starColor(temp);',
-    '',
-    '    color+=star*brightness*sc;',
-    '  }',
-    '',
-    '  gl_FragColor=vec4(color,1.0);',
-    '}'
-  ].join('\n');
 
   // ── Lava lamp fragment shader ──
   var FRAG_LAVA = [
@@ -243,7 +168,6 @@
     };
   }
 
-  programs.stars = createProgram('stars', FRAG_STARS);
   programs.lava = createProgram('lava', FRAG_LAVA);
 
   // fullscreen quad
@@ -310,15 +234,11 @@
 
     console.log('fx.js: wiring', buttons.length, 'Elm buttons');
 
-    // Attach listeners to existing Elm buttons
-    // Order: hexagon(drag), pyramid(perspective), stars, rainbow, spinners
-    buttons.forEach(function (btn, i) {
+    // When any Elm button is clicked, deactivate WebGL overlay
+    // (lets original Elm rendering show through, including stars)
+    buttons.forEach(function (btn) {
       btn.addEventListener('mousedown', function () {
-        if (i === 2) {
-          activate('stars');
-        } else {
-          deactivate();
-        }
+        deactivate();
       });
     });
 
