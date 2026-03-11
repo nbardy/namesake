@@ -7,6 +7,23 @@ h1 {
   font-family: 'Permanent Marker', cursive;
 }
 
+/* ── WebGL effects canvas ── */
+
+#fx-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1;
+  pointer-events: none;
+  display: none;
+}
+
+#fx-canvas.fx-active {
+  display: block;
+}
+
 #background-buttons {
   position: fixed;
   top: 0;

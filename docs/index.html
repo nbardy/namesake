@@ -11,6 +11,9 @@
   <body>
     <script src="index.js"></script>
 
+    <!-- WebGL effects canvas (sits between Elm canvas and UI) -->
+    <canvas id="fx-canvas"></canvas>
+
     <!-- SPA Nav + Overlay system (mounted on top of Elm canvas) -->
     <nav id="spa-nav">
       <button class="nav-btn" data-panel="about">About</button>
@@ -110,5 +113,8 @@
       });
     })();
     </script>
+
+    <!-- WebGL FBM effects (improved stars + lava lamp) -->
+    <script src="assets/fx.js"></script>
   </body>
 </html>
