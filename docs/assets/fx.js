@@ -76,10 +76,11 @@
   var VERT = 'attribute vec2 a_pos;void main(){gl_Position=vec4(a_pos,0.0,1.0);}';
 
   // ── Lava lamp fragment shader ──
-  // 3 concentric layers all anchored to mouse position, radial coords.
-  // Layer 1 (bottom): widest, low-freq FBM edge, deep color
-  // Layer 2 (middle): medium radius, higher-freq FBM edge
-  // Layer 3 (top): small wobbly ellipse, slight FBM
+  // Perlin height field centered on mouse. Three z-height slices
+  // like topographic contours of a mountain. Radial coords.
+  // Slice 1 (bottom, widest):  z in [0.2, 0.4]
+  // Slice 2 (middle):          z in [0.5, 0.6]
+  // Slice 3 (top, smallest):   z in [0.8, 0.95]
   var FRAG_LAVA = [
     'precision highp float;',
     'uniform float u_time;',
@@ -100,35 +101,50 @@
     '  float dist=length(diff);',
     '  float angle=atan(diff.y,diff.x);',
     '',
+    // Height field: radial falloff * (1 + noise) gives a noisy mountain
+    // FBM sampled in radial coords so the shape is organic
+    '  float noise=fbm(vec2(angle*0.8+u_time*0.02,dist*2.0+u_time*0.015));',
+    // mountain shape: peaks at mouse (dist=0), decays outward
+    // noise warps the slope so contours are blobby, not circular
+    '  float h=(1.0-dist*1.8)+noise*0.35;',
+    '  h=clamp(h,0.0,1.0);',
+    '',
     // base color
     '  vec3 base=vec3(0.04,0.01,0.07);',
     '',
-    // Layer 1 (bottom): wide blob, low-freq FBM warp on edge
-    // radius ~0.45, FBM on angle gives blobby oval boundary
-    '  float warp1=fbm(vec2(angle*0.8+u_time*0.03,dist*0.5+u_time*0.02))*0.15;',
-    '  float layer1=smoothstep(0.5+warp1,0.4+warp1,dist);',
-    '  vec3 col1=vec3(0.5,0.04,0.02);',
+    // Slice 1 (bottom, widest): z in [0.2, 0.4]
+    '  float s1=smoothstep(0.18,0.22,h)*smoothstep(0.42,0.38,h);',
+    '  vec3 col1=vec3(0.45,0.04,0.02);',
     '',
-    // Layer 2 (middle): medium blob, slightly higher freq warp
-    '  float warp2=fbm(vec2(angle*1.2+3.0+u_time*0.04,dist*0.8+u_time*0.03))*0.1;',
-    '  float layer2=smoothstep(0.32+warp2,0.24+warp2,dist);',
-    '  vec3 col2=vec3(0.9,0.2,0.04);',
+    // Slice 2 (middle): z in [0.5, 0.6]
+    '  float s2=smoothstep(0.48,0.52,h)*smoothstep(0.62,0.58,h);',
+    '  vec3 col2=vec3(0.85,0.2,0.04);',
     '',
-    // Layer 3 (top): small wobbly ellipse
-    '  float warp3=fbm(vec2(angle*1.5+7.0,u_time*0.06))*0.04;',
-    // slight oval squash
-    '  vec2 eDiff=diff*vec2(1.0,0.8);',
-    '  float eDist=length(eDiff);',
-    '  float layer3=smoothstep(0.16+warp3,0.1+warp3,eDist);',
+    // Slice 3 (top, smallest): z in [0.8, 0.95]
+    '  float s3=smoothstep(0.78,0.82,h)*smoothstep(0.97,0.93,h);',
     '  vec3 col3=vec3(1.0,0.6,0.15);',
     '',
-    // compose: each layer paints over the previous
-    '  vec3 color=base;',
-    '  color=mix(color,col1,layer1);',
-    '  color=mix(color,col2,layer2);',
-    '  color=mix(color,col3,layer3);',
+    // Also fill the interior of each slice for the lava-lamp look
+    // Bottom fill: anything above 0.2
+    '  float fill1=smoothstep(0.18,0.22,h);',
+    '  vec3 fillCol1=vec3(0.25,0.02,0.01);',
+    // Middle fill: anything above 0.5
+    '  float fill2=smoothstep(0.48,0.52,h);',
+    '  vec3 fillCol2=vec3(0.55,0.08,0.02);',
+    // Top fill: anything above 0.8
+    '  float fill3=smoothstep(0.78,0.82,h);',
+    '  vec3 fillCol3=vec3(0.8,0.3,0.06);',
     '',
-    // subtle vignette
+    // compose: fills first, then contour outlines on top
+    '  vec3 color=base;',
+    '  color=mix(color,fillCol1,fill1);',
+    '  color=mix(color,fillCol2,fill2);',
+    '  color=mix(color,fillCol3,fill3);',
+    // contour lines are brighter edges of each slice
+    '  color=mix(color,col1,s1);',
+    '  color=mix(color,col2,s2);',
+    '  color=mix(color,col3,s3);',
+    '',
     '  color*=1.0-0.3*length(uv-0.5);',
     '  gl_FragColor=vec4(color,1.0);',
     '}'
