@@ -76,6 +76,10 @@
   var VERT = 'attribute vec2 a_pos;void main(){gl_Position=vec4(a_pos,0.0,1.0);}';
 
   // ── Lava lamp fragment shader ──
+  // 3 concentric layers all anchored to mouse position, radial coords.
+  // Layer 1 (bottom): widest, low-freq FBM edge, deep color
+  // Layer 2 (middle): medium radius, higher-freq FBM edge
+  // Layer 3 (top): small wobbly ellipse, slight FBM
   var FRAG_LAVA = [
     'precision highp float;',
     'uniform float u_time;',
@@ -87,48 +91,45 @@
     'void main(){',
     '  vec2 uv=gl_FragCoord.xy/u_res;',
     '  float aspect=u_res.x/u_res.y;',
-    '  vec2 p=vec2(uv.x*aspect,uv.y);',
     '',
-    // Base: flat dark warm color
-    '  vec3 base=vec3(0.05,0.015,0.08);',
-    '',
-    // Layer 2: FBM blobs — double domain warped for organic oval shapes
-    '  vec2 drift=vec2(u_time*0.02,u_time*0.035);',
-    '  vec2 q=vec2(fbm(p*0.8+drift+vec2(0.0,1.7)),',
-    '              fbm(p*0.8+drift+vec2(5.2,3.1)));',
-    '  vec2 r=vec2(fbm(p*0.8+3.0*q+vec2(1.7,9.2)+drift*0.7),',
-    '              fbm(p*0.8+3.0*q+vec2(8.3,2.8)+drift*0.5));',
-    '  float n=fbm(p*0.8+3.0*r);',
-    '',
-    // threshold into discrete blobs with soft edges
-    '  float blob1=smoothstep(-0.1,0.2,n);',
-    '  float blob2=smoothstep(0.15,0.4,n);',
-    '',
-    // warm lava colors
-    '  vec3 lavaDeep=vec3(0.6,0.05,0.02);',
-    '  vec3 lavaMid=vec3(0.9,0.25,0.05);',
-    '  vec3 lavaHot=vec3(1.0,0.55,0.12);',
-    '  vec3 blobColor=mix(lavaDeep,lavaMid,blob1);',
-    '  blobColor=mix(blobColor,lavaHot,blob2);',
-    '',
-    // Layer 3: Mouse-following ellipse with FBM warped edge
+    // radial coords from mouse
     '  vec2 mUV=u_mouse/u_res;',
-    '  mUV=vec2(mUV.x*aspect,mUV.y);',
-    '  vec2 diff=p-mUV;',
-    '  diff*=vec2(1.0,0.75);',
+    '  vec2 p=vec2(uv.x*aspect,uv.y);',
+    '  vec2 m=vec2(mUV.x*aspect,mUV.y);',
+    '  vec2 diff=p-m;',
     '  float dist=length(diff);',
     '  float angle=atan(diff.y,diff.x);',
-    '  float edgeWarp=fbm(vec2(angle*1.5,u_time*0.08+dist*3.0))*0.07;',
-    '  float ellipse=smoothstep(0.22+edgeWarp,0.13+edgeWarp,dist);',
-    '  vec3 glowColor=vec3(1.0,0.7,0.25);',
-    '  vec3 glowEdge=vec3(0.95,0.35,0.08);',
-    '  vec3 ell=mix(glowEdge,glowColor,smoothstep(0.18,0.05,dist));',
     '',
-    // compose
+    // base color
+    '  vec3 base=vec3(0.04,0.01,0.07);',
+    '',
+    // Layer 1 (bottom): wide blob, low-freq FBM warp on edge
+    // radius ~0.45, FBM on angle gives blobby oval boundary
+    '  float warp1=fbm(vec2(angle*0.8+u_time*0.03,dist*0.5+u_time*0.02))*0.15;',
+    '  float layer1=smoothstep(0.5+warp1,0.4+warp1,dist);',
+    '  vec3 col1=vec3(0.5,0.04,0.02);',
+    '',
+    // Layer 2 (middle): medium blob, slightly higher freq warp
+    '  float warp2=fbm(vec2(angle*1.2+3.0+u_time*0.04,dist*0.8+u_time*0.03))*0.1;',
+    '  float layer2=smoothstep(0.32+warp2,0.24+warp2,dist);',
+    '  vec3 col2=vec3(0.9,0.2,0.04);',
+    '',
+    // Layer 3 (top): small wobbly ellipse
+    '  float warp3=fbm(vec2(angle*1.5+7.0,u_time*0.06))*0.04;',
+    // slight oval squash
+    '  vec2 eDiff=diff*vec2(1.0,0.8);',
+    '  float eDist=length(eDiff);',
+    '  float layer3=smoothstep(0.16+warp3,0.1+warp3,eDist);',
+    '  vec3 col3=vec3(1.0,0.6,0.15);',
+    '',
+    // compose: each layer paints over the previous
     '  vec3 color=base;',
-    '  color=mix(color,blobColor,blob1*0.85);',
-    '  color=mix(color,ell,ellipse*0.92);',
-    '  color*=1.0-0.4*length(uv-0.5);',
+    '  color=mix(color,col1,layer1);',
+    '  color=mix(color,col2,layer2);',
+    '  color=mix(color,col3,layer3);',
+    '',
+    // subtle vignette
+    '  color*=1.0-0.3*length(uv-0.5);',
     '  gl_FragColor=vec4(color,1.0);',
     '}'
   ].join('\n');
