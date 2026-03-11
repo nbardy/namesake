@@ -67,7 +67,7 @@
   var FBM_GLSL = [
     'float fbm(vec2 p){',
     '  float f=0.0; float w=0.5;',
-    '  for(int i=0;i<6;i++){f+=w*snoise(p);p*=2.03;w*=0.49;}',
+    '  for(int i=0;i<3;i++){f+=w*snoise(p);p*=2.03;w*=0.49;}',
     '  return f;',
     '}'
   ].join('\n');
@@ -94,11 +94,11 @@
     '',
     // Layer 2: FBM blobs — double domain warped for organic oval shapes
     '  vec2 drift=vec2(u_time*0.02,u_time*0.035);',
-    '  vec2 q=vec2(fbm(p*2.5+drift+vec2(0.0,1.7)),',
-    '              fbm(p*2.5+drift+vec2(5.2,3.1)));',
-    '  vec2 r=vec2(fbm(p*2.5+4.0*q+vec2(1.7,9.2)+drift*0.7),',
-    '              fbm(p*2.5+4.0*q+vec2(8.3,2.8)+drift*0.5));',
-    '  float n=fbm(p*2.0+4.0*r);',
+    '  vec2 q=vec2(fbm(p*0.8+drift+vec2(0.0,1.7)),',
+    '              fbm(p*0.8+drift+vec2(5.2,3.1)));',
+    '  vec2 r=vec2(fbm(p*0.8+3.0*q+vec2(1.7,9.2)+drift*0.7),',
+    '              fbm(p*0.8+3.0*q+vec2(8.3,2.8)+drift*0.5));',
+    '  float n=fbm(p*0.8+3.0*r);',
     '',
     // threshold into discrete blobs with soft edges
     '  float blob1=smoothstep(-0.1,0.2,n);',
