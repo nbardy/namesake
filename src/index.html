@@ -82,12 +82,15 @@
         content.innerHTML = tpl.innerHTML;
         overlay.classList.remove('overlay-hidden');
         overlay.classList.add('overlay-visible');
+        history.replaceState(null, '', '#' + name);
       }
 
       function closePanel() {
         overlay.classList.remove('overlay-visible');
         overlay.classList.add('overlay-hidden');
         content.innerHTML = '';
+        // Restore visual mode hash if one was set, otherwise clear
+        history.replaceState(null, '', location.pathname);
       }
 
       document.querySelectorAll('.nav-btn').forEach(function(btn) {
@@ -111,6 +114,12 @@
       document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') closePanel();
       });
+
+      // Open panel from URL hash on load
+      var initHash = location.hash.replace('#', '');
+      if (initHash === 'about' || initHash === 'projects') {
+        openPanel(initHash);
+      }
     })();
     </script>
 

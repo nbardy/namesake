@@ -205,19 +205,31 @@
     animFrame = requestAnimationFrame(render);
   }
 
-  // ── Mode switching ──
+  // ── Mode switching + URL hash routing ──
+  // Elm modes: #drag, #perspective, #stars, #rainbow, #spinners
+  // WebGL modes: #lava
+  var MODE_NAMES = ['drag', 'perspective', 'stars', 'rainbow', 'spinners'];
+
+  function setHash(name) {
+    history.replaceState(null, '', '#' + name);
+  }
+
   function activate(mode) {
     activeMode = mode;
     canvas.classList.add('fx-active');
+    setHash(mode);
     if (!animFrame) animFrame = requestAnimationFrame(render);
   }
 
-  function deactivate() {
+  function deactivate(elmIndex) {
     activeMode = null;
     canvas.classList.remove('fx-active');
     if (animFrame) {
       cancelAnimationFrame(animFrame);
       animFrame = null;
+    }
+    if (elmIndex !== undefined && MODE_NAMES[elmIndex]) {
+      setHash(MODE_NAMES[elmIndex]);
     }
   }
 
@@ -235,19 +247,17 @@
 
     console.log('fx.js: wiring', buttons.length, 'Elm buttons');
 
-    // When any Elm button is clicked, deactivate WebGL overlay
-    // (lets original Elm rendering show through, including stars)
-    buttons.forEach(function (btn) {
+    // When any Elm button is clicked, deactivate WebGL + set hash
+    buttons.forEach(function (btn, i) {
       btn.addEventListener('mousedown', function () {
-        deactivate();
+        deactivate(i);
       });
     });
 
-    // Inject lava lamp button
+    // Inject lava lamp button — uses same .icon-button class as Elm buttons
     var lavaBtn = document.createElement('button');
     lavaBtn.className = 'icon-button';
-    lavaBtn.style.cssText = 'border:none!important;outline:none;background:rgba(255,255,255,0.1)!important;margin:2px!important;padding:6px!important;border-radius:6px!important;cursor:pointer;';
-    lavaBtn.innerHTML = '<img src="assets/lava-icon.svg" alt="Lava" style="width:32px;height:32px;filter:brightness(1.2)">';
+    lavaBtn.innerHTML = '<img src="assets/lava-icon.svg" alt="Lava">';
     lavaBtn.addEventListener('mousedown', function (e) {
       e.stopPropagation();
       activate('lava');
@@ -255,7 +265,33 @@
     bgDiv.appendChild(lavaBtn);
     console.log('fx.js: lava button injected');
 
+    // Route from URL hash on load
+    applyHash();
+
     return true;
+  }
+
+  // Read hash and activate the right mode
+  function applyHash() {
+    var hash = location.hash.replace('#', '');
+    if (!hash) return;
+    if (hash === 'lava') {
+      activate('lava');
+    } else {
+      // For Elm modes, simulate clicking the right button
+      var idx = MODE_NAMES.indexOf(hash);
+      if (idx >= 0) {
+        var bgDiv = document.getElementById('background-buttons');
+        if (bgDiv) {
+          var btns = bgDiv.querySelectorAll('button');
+          if (btns[idx]) {
+            // Dispatch mousedown to trigger Elm's handler
+            var evt = new MouseEvent('mousedown', { bubbles: true });
+            btns[idx].dispatchEvent(evt);
+          }
+        }
+      }
+    }
   }
 
   // Poll for Elm buttons (they render async after fullscreen() call)
