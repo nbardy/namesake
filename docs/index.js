@@ -13172,6 +13172,45 @@
 						star.color,
 						_evancz$elm_graphics$Collage$circle(star.radius))));
 		});
+	var _user$project$Stars$hash2d = F2(
+		function (x, y) {
+			var d = (x * 127.1) + (y * 311.7);
+			var s = _elm_lang$core$Basics$sin(d) * 43758.5453;
+			return s - _elm_lang$core$Basics$toFloat(
+				_elm_lang$core$Basics$floor(s));
+		});
+	var _user$project$Stars$valueNoise = F2(
+		function (x, y) {
+			var iy = _elm_lang$core$Basics$floor(y);
+			var fy = y - _elm_lang$core$Basics$toFloat(iy);
+			var sy = (fy * fy) * (3 - (2 * fy));
+			var ix = _elm_lang$core$Basics$floor(x);
+			var fx = x - _elm_lang$core$Basics$toFloat(ix);
+			var sx = (fx * fx) * (3 - (2 * fx));
+			var n00 = A2(
+				_user$project$Stars$hash2d,
+				_elm_lang$core$Basics$toFloat(ix),
+				_elm_lang$core$Basics$toFloat(iy));
+			var n10 = A2(
+				_user$project$Stars$hash2d,
+				_elm_lang$core$Basics$toFloat(ix + 1),
+				_elm_lang$core$Basics$toFloat(iy));
+			var nx0 = n00 + (sx * (n10 - n00));
+			var n01 = A2(
+				_user$project$Stars$hash2d,
+				_elm_lang$core$Basics$toFloat(ix),
+				_elm_lang$core$Basics$toFloat(iy + 1));
+			var n11 = A2(
+				_user$project$Stars$hash2d,
+				_elm_lang$core$Basics$toFloat(ix + 1),
+				_elm_lang$core$Basics$toFloat(iy + 1));
+			var nx1 = n01 + (sx * (n11 - n01));
+			return nx0 + (sy * (nx1 - nx0));
+		});
+	var _user$project$Stars$fbm = F2(
+		function (x, y) {
+			return (((A2(_user$project$Stars$valueNoise, x, y) * 0.5) + (A2(_user$project$Stars$valueNoise, (x * 2.03) + 1.7, (y * 2.03) + 9.2) * 0.25)) + (A2(_user$project$Stars$valueNoise, (x * 4.07) + 5.3, (y * 4.07) + 2.8) * 0.125)) + (A2(_user$project$Stars$valueNoise, (x * 8.17) + 8.1, (y * 8.17) + 4.7) * 6.25e-2);
+		});
 	var _user$project$Stars$randomStarColor = _elm_community$random_extra$Random_Extra$choices(
 		A2(
 			_elm_lang$core$List$map,
@@ -13244,10 +13283,17 @@
 			var _p8 = _p5._1;
 			var _p6 = A2(
 				_elm_lang$core$Random$step,
-				A2(_elm_lang$core$Random$int, 1, 6),
+				A2(_elm_lang$core$Random$int, 0, 0),
 				_elm_lang$core$Random$initialSeed((_p9 * 7913) + _p8));
-			var starCount = _p6._0;
 			var seed = _p6._1;
+			var ny = _elm_lang$core$Basics$toFloat(_p8) / 150.0;
+			var nx = _elm_lang$core$Basics$toFloat(_p9) / 150.0;
+			var density = A2(_user$project$Stars$fbm, (nx * 3.0) + 13.7, (ny * 3.0) + 7.3);
+			var starCount = (_elm_lang$core$Native_Utils.cmp(density, 0.2) < 0) ? 0 : A3(
+				_elm_lang$core$Basics$clamp,
+				1,
+				6,
+				_elm_lang$core$Basics$round((density - 0.2) * 12));
 			var _p7 = A2(
 				_elm_lang$core$Random$step,
 				A2(

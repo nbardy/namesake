@@ -54,12 +54,65 @@ randomStar model ( row, col ) =
             randomStarColor
 
 
+-- FBM noise for organic star density distribution.
+-- hash2d: fract(sin(dot(p, (127.1, 311.7))) * 43758.5453)
+hash2d : Float -> Float -> Float
+hash2d x y =
+    let
+        d = x * 127.1 + y * 311.7
+        s = sin d * 43758.5453
+    in
+        s - toFloat (floor s)
+
+
+-- Value noise with smoothstep interpolation
+valueNoise : Float -> Float -> Float
+valueNoise x y =
+    let
+        ix = floor x
+        iy = floor y
+        fx = x - toFloat ix
+        fy = y - toFloat iy
+        sx = fx * fx * (3 - 2 * fx)
+        sy = fy * fy * (3 - 2 * fy)
+        n00 = hash2d (toFloat ix) (toFloat iy)
+        n10 = hash2d (toFloat (ix + 1)) (toFloat iy)
+        n01 = hash2d (toFloat ix) (toFloat (iy + 1))
+        n11 = hash2d (toFloat (ix + 1)) (toFloat (iy + 1))
+        nx0 = n00 + sx * (n10 - n00)
+        nx1 = n01 + sx * (n11 - n01)
+    in
+        nx0 + sy * (nx1 - nx0)
+
+
+-- 4-octave FBM with irrational frequency ratios to avoid grid harmonics
+fbm : Float -> Float -> Float
+fbm x y =
+    valueNoise x y * 0.5
+    + valueNoise (x * 2.03 + 1.7) (y * 2.03 + 9.2) * 0.25
+    + valueNoise (x * 4.07 + 5.3) (y * 4.07 + 2.8) * 0.125
+    + valueNoise (x * 8.17 + 8.1) (y * 8.17 + 4.7) * 0.0625
+
+
 generateStars : Model -> Pos -> List Star
 generateStars model ( row, col ) =
     let
-        -- Using randomness to make noise but reseeded in the same spot every render so the positions stay constant and the stars don't move
-        ( starCount, seed ) =
-            Random.step (Random.int 1 6)
+        -- FBM density at this grid cell position
+        -- Scale grid coords into noise space for large-scale variation
+        nx = toFloat row / 150.0
+        ny = toFloat col / 150.0
+        density = fbm (nx * 3.0 + 13.7) (ny * 3.0 + 7.3)
+
+        -- density range is ~0 to ~0.9; map to star count
+        -- below 0.2 = void (0 stars), above 0.7 = dense (6 stars)
+        starCount =
+            if density < 0.2 then
+                0
+            else
+                clamp 1 6 (round ((density - 0.2) * 12))
+
+        ( _, seed ) =
+            Random.step (Random.int 0 0)
                 (Random.initialSeed (row * 7913 + col))
 
         ( stars, _ ) =
