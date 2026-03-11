@@ -24,6 +24,8 @@ h1 {
   display: block;
 }
 
+/* ── Background buttons (top-left) — no box, just floating ── */
+
 #background-buttons {
   position: fixed;
   top: 0;
@@ -32,12 +34,7 @@ h1 {
   display: flex;
   gap: 4px;
   padding: 6px;
-  background: rgba(255,255,255,0.12);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-  border-radius: 0 0 12px 0;
-  border-right: 1px solid rgba(255,255,255,0.2);
-  border-bottom: 1px solid rgba(255,255,255,0.2);
+  background: none;
 }
 
 /* Hide old Elm "?" button and popup — replaced by SPA nav */
@@ -88,7 +85,7 @@ h1 {
         }
 	}
 
-/* ── SPA Nav ── */
+/* ── SPA Nav (top-right) — hidden until hover, with hint line ── */
 
 #spa-nav {
   position: fixed;
@@ -98,14 +95,24 @@ h1 {
   display: flex;
   gap: 4px;
   padding: 6px;
-  background: rgba(255,255,255,0.12);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-  border-radius: 0 0 0 12px;
-  border-left: 1px solid rgba(255,255,255,0.2);
-  border-bottom: 1px solid rgba(255,255,255,0.2);
+  background: none;
 }
 
+/* The hint: a subtle dark line that draws the eye */
+#spa-nav::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  width: 48px;
+  height: 2px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 1px;
+  transition: opacity 0.4s, width 0.4s;
+  pointer-events: none;
+}
+
+/* Buttons start invisible */
 .nav-btn {
   font-family: 'Lato', sans-serif;
   font-size: 14px;
@@ -118,11 +125,21 @@ h1 {
   padding: 8px 16px;
   border-radius: 3px;
   color: #fff;
-  /* frosted pill */
   background: rgba(255,255,255,0.15);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
-  transition: background 0.2s, transform 0.15s;
+  transition: background 0.2s, transform 0.15s, opacity 0.4s;
+  opacity: 0;
+}
+
+/* On hover of the nav area: show buttons, hide hint line */
+#spa-nav:hover .nav-btn {
+  opacity: 1;
+}
+
+#spa-nav:hover::before {
+  opacity: 0;
+  width: 0;
 }
 
 .nav-btn:hover {
@@ -156,6 +173,8 @@ h1 {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
+  /* dim + blur the canvas underneath — hides the "Nicholas Bardy" name */
+  background: rgba(0, 0, 0, 0.45);
 }
 
 /* ── Frosted glass panel ──
