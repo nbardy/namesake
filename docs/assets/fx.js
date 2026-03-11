@@ -79,7 +79,10 @@
   // ── Vertex shader (fullscreen quad) ──
   var VERT = 'attribute vec2 a_pos;void main(){gl_Position=vec4(a_pos,0.0,1.0);}';
 
-  // ── Stars fragment shader — FBM density, multiple octaves of detail ──
+  // ── Stars fragment shader ──
+  // Same look as original Elm stars (sizes, colors, twinkle).
+  // Only change: FBM density field controls WHERE stars appear,
+  // giving organic clustering + voids instead of uniform grid.
   var FRAG_STARS = [
     'precision highp float;',
     'uniform float u_time;',
@@ -88,64 +91,61 @@
     FBM_GLSL,
     HASH_GLSL,
     '',
+    // Original Elm star color palette (7 temperatures)
+    'vec3 starColor(float t){',
+    '  if(t<0.14) return vec3(0.608,0.690,1.0);',    // rgb(155,176,255)
+    '  if(t<0.28) return vec3(0.667,0.749,1.0);',    // rgb(170,191,255)
+    '  if(t<0.42) return vec3(0.792,0.843,1.0);',    // rgb(202,215,255)
+    '  if(t<0.57) return vec3(0.973,0.969,1.0);',    // rgb(248,247,255)
+    '  if(t<0.71) return vec3(1.0,0.957,0.918);',    // rgb(255,244,234)
+    '  if(t<0.85) return vec3(1.0,0.824,0.631);',    // rgb(255,210,161)
+    '  return vec3(1.0,0.800,0.435);',                // rgb(255,204,111)
+    '}',
+    '',
     'void main(){',
     '  vec2 uv=gl_FragCoord.xy/u_res;',
     '  float aspect=u_res.x/u_res.y;',
     '  vec2 p=vec2(uv.x*aspect,uv.y);',
     '',
-    // nebula: layered FBM with color variation
-    '  float neb1=fbm(p*1.8+vec2(3.1,0.7));',
-    '  float neb2=fbm(p*2.5+vec2(7.3,2.1));',
-    '  float neb3=fbm(p*1.2+vec2(0.5,5.3));',
-    '  vec3 sky=vec3(0.0,0.0,0.015);',
-    // deep blue-purple nebula wisps
-    '  sky+=vec3(0.02,0.01,0.06)*smoothstep(-0.2,0.5,neb1);',
-    '  sky+=vec3(0.04,0.0,0.03)*smoothstep(0.0,0.6,neb2);',
-    '  sky+=vec3(0.0,0.02,0.04)*smoothstep(-0.1,0.4,neb3);',
+    // plain black sky
+    '  vec3 color=vec3(0.0);',
     '',
-    // FBM density field — controls WHERE stars appear
-    // high contrast: large empty voids + dense clusters
-    '  float densityField=fbm(p*3.0+vec2(13.7,7.3));',
-    '  float densityField2=fbm(p*1.5+vec2(2.1,9.8));',
-    // combine two octaves for richer structure
-    '  float density=densityField*0.6+densityField2*0.4;',
-    // remap to high contrast: values < 0 = void, > 0.2 = dense
-    '  density=smoothstep(-0.3,0.4,density);',
+    // FBM density field — only controls distribution
+    '  float density=fbm(p*2.5+vec2(13.7,7.3))*0.5+0.5;',
+    '  density=smoothstep(0.15,0.7,density);',
     '',
-    // stars: 4 layers at different scales
-    '  float stars=0.0;',
-    '  vec3 starTint=vec3(0.0);',
-    '  for(float layer=0.0;layer<4.0;layer++){',
-    '    float scale=12.0+layer*20.0;',
-    '    vec2 cell=floor(uv*scale);',
-    '    vec2 cellUV=fract(uv*scale);',
+    // stars at one scale matching the Elm grid (~1-6 per cell)
+    '  float scale=25.0;',
+    '  vec2 cell=floor(uv*scale);',
+    '  vec2 cellUV=fract(uv*scale);',
+    '',
+    // 1-6 stars per cell (same as Elm), but only in dense areas
+    '  float maxStars=1.0+5.0*density;',
+    '  for(float i=0.0;i<6.0;i++){',
+    '    if(i>=maxStars) break;',
     // random position within cell
-    '    vec2 spos=vec2(hash(cell+vec2(0.0,layer)),hash(cell+vec2(layer,73.0)));',
+    '    vec2 spos=vec2(hash(cell+vec2(i*13.0,i*7.0)),hash(cell+vec2(i*7.0,i*31.0)));',
     '    float d=length(cellUV-spos);',
-    // use density field to cull stars in voids
-    '    float cellDensity=density;',
-    '    float threshold=0.15+cellDensity*0.55;',
-    '    float visible=step(hash(cell+vec2(419.0+layer,311.0)),threshold);',
-    // twinkle with varied speed and phase
-    '    float phase=hash(cell+vec2(97.0,53.0+layer))*6.2832;',
-    '    float speed=0.3+hash(cell+vec2(211.0,89.0+layer))*1.5;',
-    '    float twinkle=0.5+0.5*sin(u_time*speed+phase);',
-    '    twinkle=twinkle*twinkle;',  // sharper twinkle curve
-    // size: smaller stars in higher layers (farther away)
-    '    float sz=0.08-layer*0.015;',
-    '    float s=smoothstep(sz,0.0,d)*visible*twinkle;',
-    // color temperature: blue-white, warm yellow, rare red giants
-    '    float temp=hash(cell+vec2(577.0+layer,691.0));',
-    '    vec3 tc=mix(vec3(0.6,0.7,1.0),vec3(1.0,0.95,0.8),smoothstep(0.2,0.7,temp));',
-    '    tc=mix(tc,vec3(1.0,0.5,0.3),smoothstep(0.88,0.95,temp));',
-    // brightest stars get a subtle glow halo
-    '    float glow=smoothstep(sz*3.0,0.0,d)*visible*twinkle*0.15;',
-    '    starTint+=s*tc+glow*tc*0.5;',
+    // original Elm radius: 0-1, mapped to small screen dots
+    '    float radius=hash(cell+vec2(i*43.0,i*17.0));',
+    '    float sz=0.01+radius*0.03;',
+    '    float star=smoothstep(sz,0.0,d);',
+    '',
+    // twinkle: sine between brightness range, same as Elm
+    '    float bLow=hash(cell+vec2(i*59.0,i*97.0))*0.4;',
+    '    float bHigh=0.4+hash(cell+vec2(i*71.0,i*83.0))*0.6;',
+    '    float phase=hash(cell+vec2(i*37.0,i*53.0))*6.2832;',
+    '    float cyc=500.0+hash(cell+vec2(i*23.0,i*67.0))*1900.0;',
+    '    float tw=0.5+0.5*sin(u_time*1000.0/cyc+phase);',
+    '    float brightness=mix(bLow,bHigh,tw);',
+    '',
+    // color from original palette
+    '    float temp=hash(cell+vec2(i*89.0,i*41.0));',
+    '    vec3 sc=starColor(temp);',
+    '',
+    '    color+=star*brightness*sc;',
     '  }',
     '',
-    '  vec3 color=sky+starTint;',
-    // subtle overall vignette
-    '  color*=1.0-0.3*length(uv-0.5);',
     '  gl_FragColor=vec4(color,1.0);',
     '}'
   ].join('\n');
