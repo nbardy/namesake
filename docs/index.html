@@ -2,6 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Nicholas Bardy</title>
     <link rel="stylesheet" type="text/css" href="assets/style.css">
     <link href="https://fonts.googleapis.com/css?family=Permanent+Marker|Lato" rel="stylesheet">
@@ -9,5 +10,105 @@
   </head>
   <body>
     <script src="index.js"></script>
+
+    <!-- SPA Nav + Overlay system (mounted on top of Elm canvas) -->
+    <nav id="spa-nav">
+      <button class="nav-btn" data-panel="about">About</button>
+      <button class="nav-btn" data-panel="projects">Projects</button>
+    </nav>
+
+    <div id="spa-overlay" class="overlay-hidden">
+      <div id="overlay-glass">
+        <button id="overlay-close">&times;</button>
+        <div id="overlay-content"></div>
+      </div>
+    </div>
+
+    <template id="tpl-about">
+      <h1>Nicholas Bardy</h1>
+      <p class="lead">Surfer, dreamer, wanderer, and software developer by trade.</p>
+      <p>
+        I started learning software development so I could visualize problems, making them
+        easier to understand. It all started with the
+        <a href="https://en.wikipedia.org/wiki/Monty_Hall_problem">Monty Hall Problem</a> —
+        our teacher explained it, but nobody got it until I simulated it on my calculator.
+        Implementing the solution made it click, and showing others the simulation made it
+        click for them too.
+      </p>
+      <p>
+        Since then I've applied that same approach — build it, see it, understand it — to
+        music, language, machine learning, and whatever else catches my attention.
+      </p>
+      <div class="links-row">
+        <a href="http://lambdafunk.com">Blog</a>
+        <a href="https://github.com/nbardy">GitHub</a>
+      </div>
+    </template>
+
+    <template id="tpl-projects">
+      <h1>Projects</h1>
+      <div class="project-grid">
+        <a class="project-card" href="http://nbardy.github.io/soundjam">
+          <h2>SoundJam</h2>
+          <p>Music visualizer — real-time audio reactive graphics in the browser.</p>
+        </a>
+        <a class="project-card" href="https://play.google.com/store/apps/details?id=com.linguis.cards&hl=en">
+          <h2>Flashcard App</h2>
+          <p>Language learning flashcards on Android.</p>
+        </a>
+        <a class="project-card" href="https://github.com/nbardy/namesake">
+          <h2>This Site</h2>
+          <p>Interactive Elm 0.18 visualizations — the thing running behind this panel right now.</p>
+        </a>
+        <a class="project-card" href="http://lambdafunk.com">
+          <h2>Lambda Funk</h2>
+          <p>Blog on functional programming, visualization, and whatever else.</p>
+        </a>
+      </div>
+    </template>
+
+    <script>
+    (function() {
+      var overlay  = document.getElementById('spa-overlay');
+      var content  = document.getElementById('overlay-content');
+      var closeBtn = document.getElementById('overlay-close');
+
+      function openPanel(name) {
+        var tpl = document.getElementById('tpl-' + name);
+        if (!tpl) return;
+        content.innerHTML = tpl.innerHTML;
+        overlay.classList.remove('overlay-hidden');
+        overlay.classList.add('overlay-visible');
+      }
+
+      function closePanel() {
+        overlay.classList.remove('overlay-visible');
+        overlay.classList.add('overlay-hidden');
+        content.innerHTML = '';
+      }
+
+      document.querySelectorAll('.nav-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          openPanel(btn.dataset.panel);
+        });
+      });
+
+      closeBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        closePanel();
+      });
+
+      // Click on the glass backdrop (outside content) closes
+      overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) closePanel();
+      });
+
+      // Escape key closes
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closePanel();
+      });
+    })();
+    </script>
   </body>
 </html>

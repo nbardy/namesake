@@ -79,3 +79,203 @@ h1 {
             height: 64px;
         }
 	}
+
+/* ── SPA Nav ── */
+
+#spa-nav {
+  position: fixed;
+  top: 0;
+  right: 60px;
+  z-index: 900;
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+}
+
+.nav-btn {
+  font-family: 'Lato', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  padding: 8px 16px;
+  border-radius: 3px;
+  color: #fff;
+  /* frosted pill */
+  background: rgba(255,255,255,0.15);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  transition: background 0.2s, transform 0.15s;
+}
+
+.nav-btn:hover {
+  background: rgba(255,255,255,0.35);
+  transform: scale(1.05);
+}
+
+.nav-btn:active {
+  transform: scale(0.97);
+}
+
+/* ── Overlay ── */
+
+#spa-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.3s, visibility 0.3s;
+}
+
+#spa-overlay.overlay-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+#spa-overlay.overlay-visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+/* ── Frosted glass panel ──
+   backdrop-filter works over canvas content */
+#overlay-glass {
+  position: relative;
+  width: min(640px, 90vw);
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 48px 40px 40px;
+  border-radius: 16px;
+  /* frosted glass: semi-transparent white + blur of whatever is behind */
+  background: rgba(255, 255, 255, 0.25);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  backdrop-filter: blur(24px) saturate(1.4);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.25),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-family: 'Lato', sans-serif;
+}
+
+#overlay-glass h1 {
+  font-family: 'Permanent Marker', cursive;
+  font-size: 2rem;
+  margin: 0 0 0.6em;
+  color: #fff;
+}
+
+#overlay-glass h2 {
+  font-family: 'Permanent Marker', cursive;
+  font-size: 1.2rem;
+  margin: 0 0 0.3em;
+  color: #fff;
+}
+
+#overlay-glass p {
+  line-height: 1.6;
+  margin: 0 0 1em;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+#overlay-glass .lead {
+  font-size: 1.1rem;
+  font-style: italic;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+#overlay-glass a {
+  color: #fff;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: opacity 0.15s;
+}
+
+#overlay-glass a:hover {
+  opacity: 0.7;
+}
+
+/* ── Close button ── */
+
+#overlay-close {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.8);
+  font-size: 28px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+#overlay-close:hover {
+  background: rgba(255,255,255,0.15);
+}
+
+/* ── Links row ── */
+
+.links-row {
+  display: flex;
+  gap: 16px;
+  margin-top: 1.2em;
+}
+
+.links-row a {
+  padding: 8px 20px;
+  border: 1px solid rgba(255,255,255,0.4);
+  border-radius: 6px;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 0.9rem;
+  letter-spacing: 0.03em;
+  transition: background 0.2s;
+}
+
+.links-row a:hover {
+  background: rgba(255,255,255,0.15);
+}
+
+/* ── Project grid ── */
+
+.project-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.project-card {
+  display: block;
+  padding: 20px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.2);
+  text-decoration: none;
+  transition: background 0.2s, transform 0.15s;
+}
+
+.project-card:hover {
+  background: rgba(255,255,255,0.2);
+  transform: translateY(-2px);
+  opacity: 1;
+}
+
+.project-card h2 {
+  margin: 0 0 0.3em;
+}
+
+.project-card p {
+  font-size: 0.9rem;
+  margin: 0;
+  color: rgba(255,255,255,0.8);
+}
