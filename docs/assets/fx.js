@@ -104,16 +104,17 @@
     '',
     // height fields: each layer has its own falloff rate for sizing
     // top ~20% screen radius, mid 1.8x, bottom 2.2x mid (total ~80%)
+    // Map angle to circle in noise space: (cos,sin) wraps seamlessly
     '  vec2 d1=p-m1; float dist1=length(d1); float ang1=atan(d1.y,d1.x);',
-    '  float n1=fbm(vec2(ang1*0.8+u_time*0.02,dist1*2.0+u_time*0.015));',
+    '  float n1=fbm(vec2(cos(ang1),sin(ang1))*0.8+vec2(dist1*2.0+u_time*0.015,u_time*0.02));',
     '  float h1=clamp((1.0-dist1*1.26)+n1*0.35,0.0,1.0);',
     '',
     '  vec2 d2=p-m2; float dist2=length(d2); float ang2=atan(d2.y,d2.x);',
-    '  float n2=fbm(vec2(ang2*0.8+u_time*0.02+3.7,dist2*2.0+u_time*0.015));',
+    '  float n2=fbm(vec2(cos(ang2),sin(ang2))*0.8+vec2(dist2*2.0+u_time*0.015,u_time*0.02)+3.7);',
     '  float h2=clamp((1.0-dist2*2.78)+n2*0.35,0.0,1.0);',
     '',
     '  vec2 d3=p-m3; float dist3=length(d3); float ang3=atan(d3.y,d3.x);',
-    '  float n3=fbm(vec2(ang3*0.8+u_time*0.02+7.1,dist3*2.0+u_time*0.015));',
+    '  float n3=fbm(vec2(cos(ang3),sin(ang3))*0.8+vec2(dist3*2.0+u_time*0.015,u_time*0.02)+7.1);',
     '  float h3=clamp((1.0-dist3*5.0)+n3*0.35,0.0,1.0);',
     '',
     // base color
