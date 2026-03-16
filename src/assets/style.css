@@ -27,6 +27,37 @@ h1 {
   opacity: 1;
 }
 
+#site-name {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 850;
+  transform: translate(-50%, -50%);
+  color: #fff;
+  font-family: 'Permanent Marker', cursive;
+  font-size: clamp(56px, 6vw, 72px);
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+  display: none;
+  visibility: hidden;
+  opacity: 0;
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.25),
+    0 0 18px rgba(255, 255, 255, 0.18);
+  transition: opacity 0.35s ease, visibility 0.35s ease;
+}
+
+body.lava-active #site-name,
+#site-name.is-active {
+  display: block;
+  visibility: visible;
+  opacity: 1;
+}
+
 /* ── Background buttons (top-left) — no box, just floating ── */
 
 #background-buttons {
@@ -101,16 +132,19 @@ h1 {
   background: none;
 }
 
-/* The hint: a subtle dark line that draws the eye */
+/* The hint: a brighter line that is easier to spot */
 #spa-nav::before {
   content: '';
   position: absolute;
   top: 50%;
   right: 8px;
   width: 48px;
-  height: 2px;
-  background: rgba(0, 0, 0, 0.5);
-  border-radius: 1px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 999px;
+  box-shadow:
+    0 0 10px rgba(255, 255, 255, 0.85),
+    0 0 18px rgba(255, 255, 255, 0.45);
   transition: opacity 0.4s, width 0.4s;
   pointer-events: none;
 }

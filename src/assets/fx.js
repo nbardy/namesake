@@ -1,20 +1,30 @@
 // fx.js — WebGL effects overlay for namesake site
-// Replaces Elm stars with FBM starfield, adds lava lamp mode
+// Replaces Elm stars with a WebGL lava mode
 (function () {
   'use strict';
 
   // ── State ──
-  var activeMode = null;        // null | 'stars' | 'lava'
-  var mouseX = 0, mouseY = 0;  // raw mouse
-  var smoothX = 0, smoothY = 0; // delayed mouse (for lava)
+  var activeMode = null;        // null | 'lava' | 'lava2'
+  var mouseX = 0, mouseY = 0;   // raw pointer
+  var smoothX = 0, smoothY = 0; // delayed pointer
+  var flowX = 0, flowY = 0;     // smoothed pointer velocity
+  var travelX = 0, travelY = 0;
+  var travelVX = 0, travelVY = 0;
+  var travelZ = 0;
+  var travelVZ = 0;
+  var pointerEnergy = 0;
+  var pointerDown = false;
+  var lastPointerTime = 0;
   var startTime = Date.now();
-  var gl, canvas;
+  var lastFrameTime = startTime;
+  var gl, canvas, siteName;
   var programs = {};
   var animFrame = null;
   var buttonsWired = false;
 
   // ── Canvas setup ──
   canvas = document.getElementById('fx-canvas');
+  siteName = document.getElementById('site-name');
   if (!canvas) { console.warn('fx.js: no #fx-canvas'); return; }
   gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
   if (!gl) { console.warn('fx.js: no WebGL'); return; }
@@ -30,11 +40,56 @@
   window.addEventListener('resize', resize);
   resize();
 
-  // ── Mouse tracking ──
+  // ── Pointer tracking ──
+  mouseX = window.innerWidth / 2;
+  mouseY = window.innerHeight / 2;
+  smoothX = mouseX;
+  smoothY = mouseY;
+
+  function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  function registerPointer(x, y) {
+    var now = Date.now();
+    if (lastPointerTime) {
+      var dt = Math.max(16, now - lastPointerTime);
+      var vx = (x - mouseX) / dt;
+      var vy = (y - mouseY) / dt;
+      var speed = Math.sqrt(vx * vx + vy * vy);
+      pointerEnergy = Math.min(1.0, pointerEnergy + speed * 2.2 + (pointerDown ? 0.14 : 0.0));
+      flowX += (vx - flowX) * 0.35;
+      flowY += (vy - flowY) * 0.35;
+    }
+    mouseX = x;
+    mouseY = y;
+    lastPointerTime = now;
+  }
+
   document.addEventListener('mousemove', function (e) {
-    mouseX = e.clientX;
-    mouseY = e.clientY;
+    registerPointer(e.clientX, e.clientY);
   });
+  document.addEventListener('mousedown', function (e) {
+    pointerDown = true;
+    registerPointer(e.clientX, e.clientY);
+    pointerEnergy = 1.0;
+  });
+  document.addEventListener('mouseup', function () {
+    pointerDown = false;
+  });
+  document.addEventListener('touchstart', function (e) {
+    if (!e.touches || !e.touches.length) return;
+    pointerDown = true;
+    registerPointer(e.touches[0].clientX, e.touches[0].clientY);
+    pointerEnergy = 1.0;
+  }, { passive: true });
+  document.addEventListener('touchmove', function (e) {
+    if (!e.touches || !e.touches.length) return;
+    registerPointer(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: true });
+  document.addEventListener('touchend', function () {
+    pointerDown = false;
+  }, { passive: true });
 
   // ── GLSL noise primitives ──
   var NOISE_GLSL = [
@@ -67,7 +122,63 @@
   var FBM_GLSL = [
     'float fbm(vec2 p){',
     '  float f=0.0; float w=0.5;',
-    '  for(int i=0;i<3;i++){f+=w*snoise(p);p*=2.03;w*=0.49;}',
+    '  for(int i=0;i<4;i++){f+=w*snoise(p);p*=2.03;w*=0.49;}',
+    '  return f;',
+    '}'
+  ].join('\n');
+
+  var NOISE3D_GLSL = [
+    'vec4 mod289v4(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}',
+    'vec4 permute4(vec4 x){return mod289v4(((x*34.0)+1.0)*x);}',
+    'vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-0.85373472095314*r;}',
+    'float snoise3(vec3 v){',
+    '  const vec2 C=vec2(1.0/6.0,1.0/3.0);',
+    '  const vec4 D=vec4(0.0,0.5,1.0,2.0);',
+    '  vec3 i=floor(v+dot(v,C.yyy));',
+    '  vec3 x0=v-i+dot(i,C.xxx);',
+    '  vec3 g=step(x0.yzx,x0.xyz);',
+    '  vec3 l=1.0-g;',
+    '  vec3 i1=min(g.xyz,l.zxy);',
+    '  vec3 i2=max(g.xyz,l.zxy);',
+    '  vec3 x1=x0-i1+C.xxx;',
+    '  vec3 x2=x0-i2+C.yyy;',
+    '  vec3 x3=x0-D.yyy;',
+    '  i=mod289v3(i);',
+    '  vec4 p=permute4(permute4(permute4(',
+    '    i.z+vec4(0.0,i1.z,i2.z,1.0))',
+    '    +i.y+vec4(0.0,i1.y,i2.y,1.0))',
+    '    +i.x+vec4(0.0,i1.x,i2.x,1.0));',
+    '  float n_=0.142857142857;',
+    '  vec3 ns=n_*D.wyz-D.xzx;',
+    '  vec4 j=p-49.0*floor(p*ns.z*ns.z);',
+    '  vec4 x_=floor(j*ns.z);',
+    '  vec4 y_=floor(j-7.0*x_);',
+    '  vec4 x=x_*ns.x+ns.yyyy;',
+    '  vec4 y=y_*ns.x+ns.yyyy;',
+    '  vec4 h=1.0-abs(x)-abs(y);',
+    '  vec4 b0=vec4(x.xy,y.xy);',
+    '  vec4 b1=vec4(x.zw,y.zw);',
+    '  vec4 s0=floor(b0)*2.0+1.0;',
+    '  vec4 s1=floor(b1)*2.0+1.0;',
+    '  vec4 sh=-step(h,vec4(0.0));',
+    '  vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy;',
+    '  vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;',
+    '  vec3 p0=vec3(a0.xy,h.x);',
+    '  vec3 p1=vec3(a0.zw,h.y);',
+    '  vec3 p2=vec3(a1.xy,h.z);',
+    '  vec3 p3=vec3(a1.zw,h.w);',
+    '  vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));',
+    '  p0*=norm.x;p1*=norm.y;p2*=norm.z;p3*=norm.w;',
+    '  vec4 m=max(0.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.0);',
+    '  m=m*m;',
+    '  return 42.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));',
+    '}'
+  ].join('\n');
+
+  var FBM3_GLSL = [
+    'float fbm3(vec3 p){',
+    '  float f=0.0; float w=0.5;',
+    '  for(int i=0;i<4;i++){f+=w*snoise3(p);p*=2.03;w*=0.49;}',
     '  return f;',
     '}'
   ].join('\n');
@@ -75,77 +186,150 @@
   // ── Vertex shader (fullscreen quad) ──
   var VERT = 'attribute vec2 a_pos;void main(){gl_Position=vec4(a_pos,0.0,1.0);}';
 
-  // ── Lava lamp fragment shader ──
-  // Perlin height field centered on mouse. Three z-height slices
-  // like topographic contours of a mountain. Radial coords.
-  // Slice 1 (bottom, widest):  z in [0.2, 0.4]
-  // Slice 2 (middle):          z in [0.5, 0.6]
-  // Slice 3 (top, smallest):   z in [0.8, 0.95]
+  // ── Lava fragment shader ──
   var FRAG_LAVA = [
     'precision highp float;',
     'uniform float u_time;',
     'uniform vec2 u_res;',
     'uniform vec2 u_mouse;',
+    'uniform vec2 u_travel;',
+    'uniform float u_depth;',
+    'uniform vec2 u_flow;',
+    'uniform float u_energy;',
     NOISE_GLSL,
     FBM_GLSL,
+    NOISE3D_GLSL,
+    FBM3_GLSL,
+    'vec3 hsv2rgb(vec3 c){',
+    '  vec3 p=abs(fract(c.xxx+vec3(0.0,0.6666667,0.3333333))*6.0-3.0);',
+    '  vec3 rgb=clamp(p-1.0,0.0,1.0);',
+    '  return c.z*mix(vec3(1.0),rgb,c.y);',
+    '}',
+    'float krulerHue(float idx){',
+    '  float wheel=idx/15.0;',
+    '  float wobble=0.05*sin(idx*1.618)+0.025*cos(idx*0.73);',
+    '  return fract(0.03+wheel+wobble);',
+    '}',
+    'vec3 krulerColor(float idx,float drift){',
+    '  float hue=fract(krulerHue(idx)+drift);',
+    '  float sat=0.72+0.18*sin(idx*0.91+1.2);',
+    '  float val=0.82+0.12*cos(idx*1.07+0.4);',
+    '  return hsv2rgb(vec3(hue,clamp(sat,0.56,0.96),clamp(val,0.62,1.0)));',
+    '}',
+    'vec3 layerColor(float layerIdx,float timeDrift){',
+    '  float paletteIdx=floor(layerIdx/10.0);',
+    '  float local=mod(layerIdx,10.0);',
+    '  float familyPhase=timeDrift*0.12+paletteIdx*0.25;',
+    '  float familyStep=floor(familyPhase);',
+    '  float familyMix=smoothstep(0.10,0.90,fract(familyPhase));',
+    '  float startA=mod(paletteIdx*4.0+familyStep*5.0,15.0);',
+    '  float startB=mod(startA+5.0,15.0);',
+    '  vec3 colorA=krulerColor(mod(startA+local,15.0),paletteIdx*0.01);',
+    '  vec3 colorB=krulerColor(mod(startB+local,15.0),0.05+paletteIdx*0.01);',
+    '  return mix(colorA,colorB,familyMix);',
+    '}',
     '',
     'void main(){',
     '  vec2 uv=gl_FragCoord.xy/u_res;',
     '  float aspect=u_res.x/u_res.y;',
+    '  vec2 centered=uv-0.5;',
+    '  vec2 p=vec2(centered.x*aspect,centered.y);',
+    '  vec2 mouseUv=u_mouse/u_res;',
+    '  vec2 steer=mouseUv-0.5;',
+    '  vec2 flow=u_flow*vec2(aspect,1.0);',
     '',
-    // three mouse centers: parallax (top=1x, mid=0.5x, bottom=0.25x)
-    '  vec2 mUV=u_mouse/u_res;',
-    '  vec2 p=vec2(uv.x*aspect,uv.y);',
-    '  vec2 center=vec2(0.5*aspect,0.5);',
-    '  vec2 m=vec2(mUV.x*aspect,mUV.y);',
-    '  vec2 m1=mix(center,m,0.25);',  // bottom layer: 1/4 speed
-    '  vec2 m2=mix(center,m,0.5);',   // middle layer: 1/2 speed
-    '  vec2 m3=m;',                     // top layer: full speed
+    // Forward motion through the field. Pointer steers the trajectory in x/y.
+    '  vec2 travel=u_travel*1.12 + flow*0.05 + steer*0.10;',
+    '  float zoomPhase=fract(u_depth*0.10);',
+    '  float zoom=mix(0.88,2.30,pow(zoomPhase,1.4));',
+    '  vec2 world=p*zoom + travel;',
+    '  float z=u_depth*1.65;',
+    '  float t=u_time*0.018;',
     '',
-    // Each layer: fixed base radius + noise offsets the edge.
-    // No height-field slicing — band width is constant.
-    // Noise samples use (cos,sin) for seamless angular wrap.
+    // Slice index is driven primarily by forward z progression, then distorted by the field.
+    '  float field=fbm3(vec3(world*0.52,z*0.08+t))*1.15;',
+    '  field+=fbm3(vec3(world*1.05+6.3,z*0.13-t))*0.42;',
+    '  field+=fbm(world*2.0+vec2(z*0.04,-z*0.03))*0.18;',
+    '  float sliceCoord=z + field*2.1;',
+    '  float layerSpacing=1.15;',
+    '  float band=max(sliceCoord/layerSpacing + 3.0,0.0);',
+    '  float layerIdx=floor(band);',
+    '  float layerPhase=fract(band);',
+    '  float edge=min(layerPhase,1.0-layerPhase);',
+    '  float seam=exp(-edge*110.0);',
+    '  float frontFace=smoothstep(0.08,0.42,layerPhase);',
+    '  float backShadow=smoothstep(0.58,0.96,layerPhase);',
+    '  float cavityNoise=fbm3(vec3(world*1.35+13.7,z*0.11+t*0.4));',
+    '  float cavityMask=smoothstep(0.48,0.72,cavityNoise) * frontFace * (1.0-backShadow);',
     '',
-    // Layer 1 (bottom): base radius 0.79, noise shifts edge ~15%
-    '  vec2 d1=p-m1; float dist1=length(d1); float ang1=atan(d1.y,d1.x);',
-    '  float warp1=fbm(vec2(cos(ang1),sin(ang1))*0.8+vec2(u_time*0.015,u_time*0.02))*0.12;',
-    '  float edge1=0.79+warp1;',
-    '  float fill1=smoothstep(edge1+0.02,edge1-0.02,dist1);',
-    '  float outline1=smoothstep(edge1+0.02,edge1,dist1)*smoothstep(edge1-0.04,edge1-0.02,dist1);',
-    '  vec3 fillCol1=vec3(0.25,0.02,0.01);',
-    '  vec3 col1=vec3(0.45,0.04,0.02);',
+    '  vec3 bg=vec3(0.02,0.01,0.04);',
+    '  vec3 color=layerColor(layerIdx,u_time*0.10);',
+    '  color*=0.82 + 0.18*frontFace;',
+    '  color-=vec3(0.10,0.05,0.12)*backShadow*0.55;',
+    '  color+=vec3(1.0,0.97,0.86)*seam*(0.06+u_energy*0.03);',
+    '  color=mix(color,bg,cavityMask*0.92);',
+    '  color=mix(bg,color,0.985);',
+    '  color*=1.0-0.16*length(centered*vec2(aspect,1.0));',
+    '  gl_FragColor=vec4(color,1.0);',
+    '}'
+  ].join('\n');
+
+  // ── Lava 2 fragment shader ──
+  // Thresholded z-planes with holes revealing deeper planes over black.
+  var FRAG_LAVA2 = [
+    'precision highp float;',
+    'uniform float u_time;',
+    'uniform vec2 u_res;',
+    'uniform vec2 u_mouse;',
+    'uniform vec2 u_travel;',
+    'uniform float u_depth;',
+    'uniform vec2 u_flow;',
+    'uniform float u_energy;',
+    NOISE_GLSL,
+    FBM_GLSL,
+    NOISE3D_GLSL,
+    FBM3_GLSL,
     '',
-    // Layer 2 (middle): base radius 0.36, noise shifts edge ~12%
-    '  vec2 d2=p-m2; float dist2=length(d2); float ang2=atan(d2.y,d2.x);',
-    '  float warp2=fbm(vec2(cos(ang2),sin(ang2))*0.8+vec2(u_time*0.015,u_time*0.02)+3.7)*0.09;',
-    '  float edge2=0.36+warp2;',
-    '  float fill2=smoothstep(edge2+0.02,edge2-0.02,dist2);',
-    '  float outline2=smoothstep(edge2+0.02,edge2,dist2)*smoothstep(edge2-0.04,edge2-0.02,dist2);',
-    '  vec3 fillCol2=vec3(0.55,0.08,0.02);',
-    '  vec3 col2=vec3(0.85,0.2,0.04);',
+    'vec3 planeColor(float planeIdx){',
+    '  float tone=mod(planeIdx,3.0);',
+    '  if(tone<0.5) return vec3(0.18,0.07,0.30);',
+    '  if(tone<1.5) return vec3(0.38,0.18,0.58);',
+    '  return vec3(0.70,0.50,0.92);',
+    '}',
     '',
-    // Layer 3 (top): base radius 0.2, noise shifts edge ~8%
-    '  vec2 d3=p-m3; float dist3=length(d3); float ang3=atan(d3.y,d3.x);',
-    '  float warp3=fbm(vec2(cos(ang3),sin(ang3))*0.8+vec2(u_time*0.015,u_time*0.02)+7.1)*0.06;',
-    '  float edge3=0.2+warp3;',
-    '  float fill3=smoothstep(edge3+0.015,edge3-0.015,dist3);',
-    '  float outline3=smoothstep(edge3+0.015,edge3,dist3)*smoothstep(edge3-0.03,edge3-0.015,dist3);',
-    '  vec3 fillCol3=vec3(0.8,0.3,0.06);',
-    '  vec3 col3=vec3(1.0,0.6,0.15);',
+    'void main(){',
+    '  vec2 uv=gl_FragCoord.xy/u_res;',
+    '  float aspect=u_res.x/u_res.y;',
+    '  vec2 centered=uv-0.5;',
+    '  vec2 p=vec2(centered.x*aspect,centered.y);',
+    '  vec2 mouseUv=u_mouse/u_res;',
+    '  vec2 steer=mouseUv-0.5;',
+    '  vec2 flow=u_flow*vec2(aspect,1.0);',
+    '  vec2 travel=u_travel*0.85 + steer*0.06 + flow*0.04;',
+    '  float cameraZ=u_depth*0.78;',
+    '  float spacing=1.85;',
+    '  float basePlane=floor(cameraZ/spacing);',
+    '  vec3 color=vec3(0.0,0.0,0.0);',
+    '  float accum=0.0;',
     '',
-    // base color
-    '  vec3 base=vec3(0.04,0.01,0.07);',
+    '  for(int i=11;i>=0;i--){',
+    '    float depthStep=float(i);',
+    '    float plane=basePlane+depthStep;',
+    '    float depthFade=1.0-depthStep*0.06;',
+    '    vec2 sampleXY=(p*(1.0+depthStep*0.08)+travel*(1.0+depthStep*0.03));',
+    '    float sampleZ=plane*0.18+u_time*0.012;',
+    '    float density=fbm3(vec3(sampleXY*1.05,sampleZ))*0.85;',
+    '    density+=fbm3(vec3(sampleXY*2.1+4.7,sampleZ*1.9))*0.25;',
+    '    float threshold=0.18+0.06*sin(plane*0.73);',
+    '    float solid=smoothstep(threshold,threshold+0.03,density);',
+    '    float edge=smoothstep(threshold+0.01,threshold+0.04,density)-smoothstep(threshold+0.04,threshold+0.07,density);',
+    '    vec3 planeCol=planeColor(plane)*depthFade;',
+    '    planeCol+=vec3(0.16,0.10,0.24)*edge*(0.7+u_energy*0.2);',
+    '    color=mix(color,planeCol,solid*(1.0-accum));',
+    '    accum+=solid*(1.0-accum);',
+    '  }',
     '',
-    // compose: fills then outlines
-    '  vec3 color=base;',
-    '  color=mix(color,fillCol1,fill1);',
-    '  color=mix(color,fillCol2,fill2);',
-    '  color=mix(color,fillCol3,fill3);',
-    '  color=mix(color,col1,outline1);',
-    '  color=mix(color,col2,outline2);',
-    '  color=mix(color,col3,outline3);',
-    '',
-    '  color*=1.0-0.3*length(uv-0.5);',
+    '  color*=1.0-0.12*length(centered*vec2(aspect,1.0));',
     '  gl_FragColor=vec4(color,1.0);',
     '}'
   ].join('\n');
@@ -181,11 +365,16 @@
       a_pos: gl.getAttribLocation(p, 'a_pos'),
       u_time: gl.getUniformLocation(p, 'u_time'),
       u_res: gl.getUniformLocation(p, 'u_res'),
-      u_mouse: gl.getUniformLocation(p, 'u_mouse')
+      u_mouse: gl.getUniformLocation(p, 'u_mouse'),
+      u_travel: gl.getUniformLocation(p, 'u_travel'),
+      u_depth: gl.getUniformLocation(p, 'u_depth'),
+      u_flow: gl.getUniformLocation(p, 'u_flow'),
+      u_energy: gl.getUniformLocation(p, 'u_energy')
     };
   }
 
   programs.lava = createProgram('lava', FRAG_LAVA);
+  programs.lava2 = createProgram('lava2', FRAG_LAVA2);
 
   // fullscreen quad
   var quad = gl.createBuffer();
@@ -200,13 +389,30 @@
     }
 
     var prog = programs[activeMode];
-    var t = (Date.now() - startTime) / 1000.0;
+    var now = Date.now();
+    var t = (now - startTime) / 1000.0;
+    var dt = Math.min(0.05, (now - lastFrameTime) / 1000.0 || 0.016);
     var dpr = window.devicePixelRatio || 1;
+    lastFrameTime = now;
 
-    // smooth mouse (exponential easing)
-    var ease = activeMode === 'lava' ? 0.03 : 0.15;
-    smoothX += (mouseX - smoothX) * ease;
-    smoothY += (mouseY - smoothY) * ease;
+    // Pointer position steers the trajectory. Forward motion is constant with extra push on press.
+    smoothX += (mouseX - smoothX) * 0.014;
+    smoothY += (mouseY - smoothY) * 0.014;
+    flowX *= 0.78;
+    flowY *= 0.78;
+    pointerEnergy *= pointerDown ? 0.976 : 0.962;
+
+    var nx = (smoothX / window.innerWidth) - 0.5;
+    var ny = 0.5 - (smoothY / window.innerHeight);
+    var desiredVX = nx * 0.18;
+    var desiredVY = ny * 0.14;
+    var desiredVZ = 0.38 + (pointerDown ? 0.10 : 0.0) + pointerEnergy * 0.05;
+    travelVX += (desiredVX - travelVX) * Math.min(1, dt * 0.85);
+    travelVY += (desiredVY - travelVY) * Math.min(1, dt * 0.85);
+    travelVZ += (desiredVZ - travelVZ) * Math.min(1, dt * 0.75);
+    travelX += travelVX * dt;
+    travelY += travelVY * dt;
+    travelZ += travelVZ * dt;
 
     gl.useProgram(prog.program);
     gl.bindBuffer(gl.ARRAY_BUFFER, quad);
@@ -216,14 +422,16 @@
     gl.uniform1f(prog.u_time, t);
     gl.uniform2f(prog.u_res, canvas.width, canvas.height);
     gl.uniform2f(prog.u_mouse, smoothX * dpr, canvas.height - smoothY * dpr);
+    gl.uniform2f(prog.u_travel, travelX, travelY);
+    gl.uniform1f(prog.u_depth, travelZ);
+    gl.uniform2f(prog.u_flow, clamp(flowX, -0.35, 0.35), clamp(-flowY, -0.35, 0.35));
+    gl.uniform1f(prog.u_energy, clamp(pointerEnergy, 0.0, 1.0));
 
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     animFrame = requestAnimationFrame(render);
   }
 
   // ── Mode switching + URL hash routing ──
-  // Elm modes: #drag, #perspective, #stars, #rainbow, #spinners
-  // WebGL modes: #lava
   var MODE_NAMES = ['drag', 'perspective', 'stars', 'rainbow', 'spinners'];
 
   function setHash(name) {
@@ -233,6 +441,8 @@
   function activate(mode) {
     activeMode = mode;
     canvas.classList.add('fx-active');
+    document.body.classList.add('lava-active');
+    if (siteName) siteName.classList.add('is-active');
     setHash(mode);
     if (!animFrame) animFrame = requestAnimationFrame(render);
   }
@@ -240,6 +450,8 @@
   function deactivate(elmIndex) {
     activeMode = null;
     canvas.classList.remove('fx-active');
+    document.body.classList.remove('lava-active');
+    if (siteName) siteName.classList.remove('is-active');
     if (animFrame) {
       cancelAnimationFrame(animFrame);
       animFrame = null;
@@ -250,58 +462,60 @@
   }
 
   // ── Wire up Elm buttons + inject lava button ──
-  // Elm renders asynchronously, so we poll until #background-buttons has children
   function wireButtons() {
     var bgDiv = document.getElementById('background-buttons');
     if (!bgDiv) return false;
     var buttons = bgDiv.querySelectorAll('button');
     if (buttons.length < 5) return false;
 
-    // Already wired
     if (buttonsWired) return true;
     buttonsWired = true;
 
     console.log('fx.js: wiring', buttons.length, 'Elm buttons');
 
-    // When any Elm button is clicked, deactivate WebGL + set hash
     buttons.forEach(function (btn, i) {
       btn.addEventListener('mousedown', function () {
         deactivate(i);
       });
     });
 
-    // Inject lava lamp button — uses same .icon-button class as Elm buttons
     var lavaBtn = document.createElement('button');
     lavaBtn.className = 'icon-button';
+    lavaBtn.title = 'Lava';
     lavaBtn.innerHTML = '<img src="assets/lava-icon.svg" alt="Lava">';
     lavaBtn.addEventListener('mousedown', function (e) {
       e.stopPropagation();
       activate('lava');
     });
     bgDiv.appendChild(lavaBtn);
+
+    var lava2Btn = document.createElement('button');
+    lava2Btn.className = 'icon-button';
+    lava2Btn.title = 'Lava 2';
+    lava2Btn.innerHTML = '<img src="assets/overlap.png" alt="Lava 2">';
+    lava2Btn.addEventListener('mousedown', function (e) {
+      e.stopPropagation();
+      activate('lava2');
+    });
+    bgDiv.appendChild(lava2Btn);
     console.log('fx.js: lava button injected');
 
-    // Route from URL hash on load
     applyHash();
-
     return true;
   }
 
-  // Read hash and activate the right mode
   function applyHash() {
     var hash = location.hash.replace('#', '');
     if (!hash) return;
-    if (hash === 'lava') {
-      activate('lava');
+    if (hash === 'lava' || hash === 'lava2') {
+      activate(hash);
     } else {
-      // For Elm modes, simulate clicking the right button
       var idx = MODE_NAMES.indexOf(hash);
       if (idx >= 0) {
         var bgDiv = document.getElementById('background-buttons');
         if (bgDiv) {
           var btns = bgDiv.querySelectorAll('button');
           if (btns[idx]) {
-            // Dispatch mousedown to trigger Elm's handler
             var evt = new MouseEvent('mousedown', { bubbles: true });
             btns[idx].dispatchEvent(evt);
           }
@@ -310,7 +524,6 @@
     }
   }
 
-  // Poll for Elm buttons (they render async after fullscreen() call)
   function waitForElm() {
     if (wireButtons()) return;
     var attempts = 0;
@@ -323,6 +536,5 @@
     }, 50);
   }
 
-  // Start polling immediately
   waitForElm();
 })();
