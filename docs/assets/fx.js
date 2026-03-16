@@ -303,28 +303,34 @@
     '  vec2 centered=uv-0.5;',
     '  vec2 p=vec2(centered.x*aspect,centered.y);',
     '  vec2 mouseUv=u_mouse/u_res;',
-    '  vec2 steer=mouseUv-0.5;',
+    '  vec2 steer=(mouseUv-0.5)*vec2(aspect,1.0);',
     '  vec2 flow=u_flow*vec2(aspect,1.0);',
-    '  vec2 travel=u_travel*0.85 + steer*0.06 + flow*0.04;',
-    '  float cameraZ=u_depth*0.78;',
+    '  vec2 cameraXY=u_travel*0.96;',
+    '  vec2 look=steer*0.46 + flow*0.08;',
+    '  vec3 rayDir=normalize(vec3(p+look,1.20));',
+    '  float cameraZ=u_depth*1.12;',
     '  float spacing=1.85;',
     '  float basePlane=floor(cameraZ/spacing);',
     '  vec3 color=vec3(0.0,0.0,0.0);',
     '  float accum=0.0;',
     '',
-    '  for(int i=11;i>=0;i--){',
-    '    float depthStep=float(i);',
-    '    float plane=basePlane+depthStep;',
-    '    float depthFade=1.0-depthStep*0.06;',
-    '    vec2 sampleXY=(p*(1.0+depthStep*0.08)+travel*(1.0+depthStep*0.03));',
-    '    float sampleZ=plane*0.18+u_time*0.012;',
-    '    float density=fbm3(vec3(sampleXY*1.05,sampleZ))*0.85;',
-    '    density+=fbm3(vec3(sampleXY*2.1+4.7,sampleZ*1.9))*0.25;',
-    '    float threshold=0.18+0.06*sin(plane*0.73);',
-    '    float solid=smoothstep(threshold,threshold+0.03,density);',
-    '    float edge=smoothstep(threshold+0.01,threshold+0.04,density)-smoothstep(threshold+0.04,threshold+0.07,density);',
-    '    vec3 planeCol=planeColor(plane)*depthFade;',
-    '    planeCol+=vec3(0.16,0.10,0.24)*edge*(0.7+u_energy*0.2);',
+    '  for(int i=0;i<18;i++){',
+    '    float plane=basePlane+1.0+float(i);',
+    '    float planeZ=plane*spacing;',
+    '    float planeDist=planeZ-cameraZ;',
+    '    float depthNorm=clamp(float(i)/17.0,0.0,1.0);',
+    '    float nearFade=smoothstep(0.02,0.28,planeDist);',
+    '    vec2 hit=cameraXY + (rayDir.xy/max(rayDir.z,0.001))*planeDist;',
+    '    float density=fbm3(vec3(hit*0.58,planeZ*0.16))*0.82;',
+    '    density+=fbm3(vec3(hit*1.24+4.7,planeZ*0.31))*0.24;',
+    '    density+=fbm(hit*1.10+vec2(plane*0.23,plane*0.11))*0.12;',
+    '    float threshold=0.20+0.06*sin(plane*0.73);',
+    '    float solid=smoothstep(threshold,threshold+0.035,density);',
+    '    solid*=nearFade;',
+    '    float edge=smoothstep(threshold+0.01,threshold+0.05,density)-smoothstep(threshold+0.05,threshold+0.09,density);',
+    '    vec3 planeCol=planeColor(plane)*(1.0-depthNorm*0.52);',
+    '    planeCol+=vec3(0.16,0.10,0.24)*edge*(0.8+u_energy*0.2);',
+    '    planeCol+=vec3(0.05,0.02,0.08)*(1.0-depthNorm)*(1.0-solid)*0.2;',
     '    color=mix(color,planeCol,solid*(1.0-accum));',
     '    accum+=solid*(1.0-accum);',
     '  }',
@@ -396,19 +402,26 @@
     lastFrameTime = now;
 
     // Pointer position steers the trajectory. Forward motion is constant with extra push on press.
-    smoothX += (mouseX - smoothX) * 0.014;
-    smoothY += (mouseY - smoothY) * 0.014;
+    var pointerEase = activeMode === 'lava2' ? 0.010 : 0.014;
+    var velocityEase = activeMode === 'lava2' ? 0.42 : 0.85;
+    var lateralX = activeMode === 'lava2' ? 0.065 : 0.18;
+    var lateralY = activeMode === 'lava2' ? 0.055 : 0.14;
+    var forwardBase = activeMode === 'lava2' ? 0.48 : 0.38;
+    var pressBoost = activeMode === 'lava2' ? 0.06 : 0.10;
+    var energyBoost = activeMode === 'lava2' ? 0.04 : 0.05;
+    smoothX += (mouseX - smoothX) * pointerEase;
+    smoothY += (mouseY - smoothY) * pointerEase;
     flowX *= 0.78;
     flowY *= 0.78;
     pointerEnergy *= pointerDown ? 0.976 : 0.962;
 
     var nx = (smoothX / window.innerWidth) - 0.5;
     var ny = 0.5 - (smoothY / window.innerHeight);
-    var desiredVX = nx * 0.18;
-    var desiredVY = ny * 0.14;
-    var desiredVZ = 0.38 + (pointerDown ? 0.10 : 0.0) + pointerEnergy * 0.05;
-    travelVX += (desiredVX - travelVX) * Math.min(1, dt * 0.85);
-    travelVY += (desiredVY - travelVY) * Math.min(1, dt * 0.85);
+    var desiredVX = nx * lateralX;
+    var desiredVY = ny * lateralY;
+    var desiredVZ = forwardBase + (pointerDown ? pressBoost : 0.0) + pointerEnergy * energyBoost;
+    travelVX += (desiredVX - travelVX) * Math.min(1, dt * velocityEase);
+    travelVY += (desiredVY - travelVY) * Math.min(1, dt * velocityEase);
     travelVZ += (desiredVZ - travelVZ) * Math.min(1, dt * 0.75);
     travelX += travelVX * dt;
     travelY += travelVY * dt;
