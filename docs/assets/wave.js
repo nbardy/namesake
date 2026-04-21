@@ -3,7 +3,13 @@ struct Uniforms {
     time: f32,
     domain_length: f32,
     num_particles: u32,
-    grid_size: u32,
+    grid_res_x: u32,
+    grid_res_y: u32,
+    grid_res_z: u32,
+    h: f32,
+    mass: f32,
+    rest_density: f32,
+    dt: f32,
 };
 
 struct Camera {
@@ -14,113 +20,146 @@ struct Camera {
 @group(0) @binding(1) var<uniform> camera: Camera;
 
 struct Particle {
-    pos_x: f32,
-    pos_y: f32,
-    pos_z: f32,
-    vel_x: f32,
-    vel_y: f32,
-    vel_z: f32,
-    state: f32,
-    life: f32,
+    pos_x: f32, pos_y: f32, pos_z: f32,
+    vel_x: f32, vel_y: f32, vel_z: f32,
+    pred_x: f32, pred_y: f32, pred_z: f32,
+    density: f32, lambda: f32, state: f32,
 };
 
 @group(0) @binding(2) var<storage, read_write> particles: array<Particle>;
 
-struct WaveData {
-    data0: vec4<f32>, // x: bottom_z, y: amplitude, z: phase, w: k
-    data1: vec4<f32>, // x: c, y: H_max, z: -, w: -
+// Grid buffers
+@group(0) @binding(3) var<storage, read_write> grid_counters: array<atomic<u32>>;
+
+struct Cell {
+    p_ids: array<u32, 64>,
 };
+@group(0) @binding(4) var<storage, read_write> grid_cells: array<Cell>;
 
-@group(0) @binding(3) var<storage, read> wave_grid: array<WaveData>;
-
-// Pseudorandom number generator
-fn rand(co: vec2<f32>) -> f32 {
-    return fract(sin(dot(co.xy, vec2<f32>(12.9898, 78.233))) * 43758.5453);
+fn get_cell_coords(pos: vec3<f32>) -> vec3<i32> {
+    return vec3<i32>(
+        i32(pos.x / uniforms.h),
+        i32((pos.y + 40.0) / uniforms.h), // Offset Y to make it positive
+        i32((pos.z + 20.0) / uniforms.h)  // Offset Z
+    );
 }
 
-fn get_wave_data(x: f32) -> WaveData {
-    let normalized_x = clamp(x / uniforms.domain_length, 0.0, 0.9999);
-    let idx = u32(normalized_x * f32(uniforms.grid_size));
-    return wave_grid[idx];
+fn get_cell_index(coords: vec3<i32>) -> u32 {
+    let cx = clamp(coords.x, 0, i32(uniforms.grid_res_x) - 1);
+    let cy = clamp(coords.y, 0, i32(uniforms.grid_res_y) - 1);
+    let cz = clamp(coords.z, 0, i32(uniforms.grid_res_z) - 1);
+    return u32(cx) + u32(cy) * uniforms.grid_res_x + u32(cz) * uniforms.grid_res_x * uniforms.grid_res_y;
 }
 
 @compute @workgroup_size(256)
-fn compute_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+fn clear_grid(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let index = global_id.x;
-    if (index >= uniforms.num_particles) {
-        return;
-    }
+    let total_cells = uniforms.grid_res_x * uniforms.grid_res_y * uniforms.grid_res_z;
+    if (index >= total_cells) { return; }
+    atomicStore(&grid_counters[index], 0u);
+}
+
+@compute @workgroup_size(256)
+fn predict_and_bin(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let index = global_id.x;
+    if (index >= uniforms.num_particles) { return; }
 
     var p = particles[index];
-    let dt = 0.016; 
-
-    let wd = get_wave_data(p.pos_x);
-    let bottom_z = wd.data0.x;
     
-    if (p.state == 3.0) {
-        p.pos_z = bottom_z - 0.2;
-        particles[index] = p;
-        return;
+    // Apply gravity and predict
+    p.vel_z -= 9.81 * uniforms.dt;
+    p.pred_x = p.pos_x + p.vel_x * uniforms.dt;
+    p.pred_y = p.pos_y + p.vel_y * uniforms.dt;
+    p.pred_z = p.pos_z + p.vel_z * uniforms.dt;
+
+    // Boundary conditions
+    if (p.pred_z < -10.0) { p.pred_z = -10.0; p.vel_z *= -0.5; }
+    if (p.pred_x < 0.0) { p.pred_x += uniforms.domain_length; }
+    if (p.pred_x > uniforms.domain_length) { p.pred_x -= uniforms.domain_length; }
+    
+    particles[index] = p;
+
+    // Binning
+    let coords = get_cell_coords(vec3<f32>(p.pred_x, p.pred_y, p.pred_z));
+    let cell_idx = get_cell_index(coords);
+    
+    let offset = atomicAdd(&grid_counters[cell_idx], 1u);
+    if (offset < 64u) {
+        grid_cells[cell_idx].p_ids[offset] = index;
     }
+}
 
-    let A = wd.data0.y;
-    let phase = wd.data0.z;
-    let k = wd.data0.w;
-    let c = wd.data1.x;
-    let max_H = wd.data1.y;
+@compute @workgroup_size(256)
+fn solve_pbf(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    // Phase 2: Density and Lambda
+}
 
-    let omega = 2.0 * 3.14159265 / 14.0;
-    
-    // Time for wave to reach this x:
-    let travel_time = phase / omega;
-    let pulse_period = 10.0;
-    
-    var wave_vel_x = 0.0;
-    var wave_vel_z = 0.0;
-    var surface_z = 0.0;
-    
-    for (var i = -1; i <= 2; i = i + 1) {
-        let pulse_index = floor(uniforms.time / pulse_period) + f32(i);
-        let pulse_emission_time = pulse_index * pulse_period;
-        
-        let time_diff = uniforms.time - pulse_emission_time - travel_time;
-        // Spatial distance from pulse center (approximate)
-        let dist = time_diff * c;
-        
-        // Gaussian envelope (width of the packet)
-        let envelope = exp(- (dist * dist) / (30.0 * 30.0)); 
-        
-        // Carrier phase
-        let p_phase = phase - omega * (uniforms.time - pulse_emission_time);
-        
-        let d = max(-bottom_z, 0.1);
-        let depth_factor = p.pos_z + d; 
-        
-        let sinh_kd = sinh(k * d);
-        let cosh_kzd = cosh(k * depth_factor);
-        let sinh_kzd = sinh(k * depth_factor);
-        
-        let u = A * omega * cos(p_phase) * cosh_kzd / max(sinh_kd, 0.001) * envelope;
-        let w = A * omega * sin(p_phase) * sinh_kzd / max(sinh_kd, 0.001) * envelope;
-        
-        wave_vel_x += u;
-        wave_vel_z += w;
-        
-        surface_z += A * cos(p_phase) * envelope;
-    }
+@compute @workgroup_size(256)
+fn update_velocity(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let index = global_id.x;
+    if (index >= uniforms.num_particles) { return; }
+    var p = particles[index];
+    p.pos_x = p.pred_x;
+    p.pos_y = p.pred_y;
+    p.pos_z = p.pred_z;
+    particles[index] = p;
+}
+`;
 
-    if (p.state == 0.0) {
-        let depth_col = clamp((p.pos_z - bottom_z) / 10.0, 0.0, 1.0);
-        let speed_col = clamp(length(vec3<f32>(p.vel_x, p.vel_y, p.vel_z)) / max(wd.data1.x, 0.001), 0.0, 1.0);
-        out.color = vec4<f32>(0.0, 0.2 + 0.5 * speed_col, 0.4 + 0.6 * depth_col, 0.5);
-    } else if (p.state == 3.0) {
-        let depth_col = clamp((p.pos_z + 10.0) / 10.0, 0.0, 1.0);
-        out.color = vec4<f32>(0.1 + 0.1*depth_col, 0.2 + 0.1*depth_col, 0.3 + 0.2*depth_col, 0.8);
-    } else {
-        let intensity = clamp(p.life / 2.0, 0.0, 1.0);
-        out.color = vec4<f32>(0.8 * intensity, 0.9 * intensity, 1.0 * intensity, intensity * 0.8);
-    }
+const RENDER_SHADER_CODE = `
+struct Uniforms {
+    time: f32,
+    domain_length: f32,
+    num_particles: u32,
+    grid_res_x: u32,
+    grid_res_y: u32,
+    grid_res_z: u32,
+    h: f32,
+    mass: f32,
+    rest_density: f32,
+    dt: f32,
+};
+
+struct Camera {
+    view_proj: mat4x4<f32>,
+};
+
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@group(0) @binding(1) var<uniform> camera: Camera;
+
+struct Particle {
+    pos_x: f32, pos_y: f32, pos_z: f32,
+    vel_x: f32, vel_y: f32, vel_z: f32,
+    pred_x: f32, pred_y: f32, pred_z: f32,
+    density: f32, lambda: f32, state: f32,
+};
+
+@group(0) @binding(2) var<storage, read> particles: array<Particle>;
+
+struct VertexOutput {
+    @builtin(position) position: vec4<f32>,
+    @location(0) color: vec4<f32>,
+};
+
+@vertex
+fn vertex_main(@builtin(vertex_index) vertex_index: u32, @builtin(instance_index) instance_index: u32) -> VertexOutput {
+    let p = particles[instance_index];
     
+    var quad_pos = vec2<f32>(0.0);
+    if (vertex_index == 0u) { quad_pos = vec2<f32>(-1.0, -1.0); }
+    if (vertex_index == 1u) { quad_pos = vec2<f32>( 1.0, -1.0); }
+    if (vertex_index == 2u) { quad_pos = vec2<f32>(-1.0,  1.0); }
+    if (vertex_index == 3u) { quad_pos = vec2<f32>( 1.0,  1.0); }
+    if (vertex_index == 4u) { quad_pos = vec2<f32>(-1.0,  1.0); }
+    if (vertex_index == 5u) { quad_pos = vec2<f32>( 1.0, -1.0); }
+    
+    let size = 0.15;
+    let world_pos = vec3<f32>(p.pos_x, p.pos_y, p.pos_z) + vec3<f32>(quad_pos.x * size, 0.0, quad_pos.y * size);
+    
+    var out: VertexOutput;
+    out.position = camera.view_proj * vec4<f32>(world_pos, 1.0);
+    let depth_col = clamp((p.pos_z + 10.0) / 10.0, 0.0, 1.0);
+    out.color = vec4<f32>(0.0, 0.4 + 0.4 * depth_col, 0.8 + 0.2 * depth_col, 0.6);
     return out;
 }
 
@@ -141,7 +180,7 @@ window.waveStart = async function() {
     if (!canvas) return;
 
     if (waveInitialized) {
-        return; // Frame loop is still active but blocked by waveRunning
+        return;
     }
 
     if (!navigator.gpu) {
@@ -157,7 +196,11 @@ window.waveStart = async function() {
         return;
     }
 
-    const device = await adapter.requestDevice();
+    const device = await adapter.requestDevice({
+        requiredLimits: {
+            maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize
+        }
+    });
     const context = canvas.getContext('webgpu');
 
     const devicePixelRatio = window.devicePixelRatio || 1;
@@ -171,73 +214,59 @@ window.waveStart = async function() {
         alphaMode: 'premultiplied',
     });
 
-    const numParticles = 250000;
+    const numParticles = 100000; // Reduced for PBF to ensure 60fps initially
     const domainLength = 200.0;
-    const gridSize = 1024;
+    const h = 1.0; // Smoothing radius
+    const gridResX = Math.ceil(domainLength / h);
+    const gridResY = Math.ceil(80.0 / h);
+    const gridResZ = Math.ceil(40.0 / h);
+    const numCells = gridResX * gridResY * gridResZ;
 
+    // Buffer setups
     const particleBuffer = device.createBuffer({
-        size: numParticles * 32,
+        size: numParticles * 48, // 12 f32s per particle
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX,
         mappedAtCreation: true,
     });
 
     const particleData = new Float32Array(particleBuffer.getMappedRange());
     for (let i = 0; i < numParticles; i++) {
-        const isFloor = i >= 200000;
-        const x = Math.random() * domainLength;
-        const y = (Math.random() - 0.5) * (isFloor ? 60.0 : 40.0);
-        const z = -Math.random() * 10.0;
+        // Drop particles in a block
+        const x = Math.random() * 40.0 + 20.0;
+        const y = (Math.random() - 0.5) * 40.0;
+        const z = Math.random() * 10.0;
         
-        particleData[i * 8 + 0] = x;
-        particleData[i * 8 + 1] = y;
-        particleData[i * 8 + 2] = isFloor ? -10.0 : z;
-        particleData[i * 8 + 3] = 0;
-        particleData[i * 8 + 4] = 0;
-        particleData[i * 8 + 5] = 0;
-        particleData[i * 8 + 6] = isFloor ? 3.0 : 0.0;
-        particleData[i * 8 + 7] = z;
+        particleData[i * 12 + 0] = x;
+        particleData[i * 12 + 1] = y;
+        particleData[i * 12 + 2] = z;
+        // vel
+        particleData[i * 12 + 3] = 0;
+        particleData[i * 12 + 4] = 0;
+        particleData[i * 12 + 5] = 0;
+        // pred
+        particleData[i * 12 + 6] = 0;
+        particleData[i * 12 + 7] = 0;
+        particleData[i * 12 + 8] = 0;
+        // density, lambda, state
+        particleData[i * 12 + 9] = 0;
+        particleData[i * 12 + 10] = 0;
+        particleData[i * 12 + 11] = 0;
     }
     particleBuffer.unmap();
 
-    const waveGridBuffer = device.createBuffer({
-        size: gridSize * 32,
+    // Grid buffers
+    const gridCountersBuffer = device.createBuffer({
+        size: numCells * 4,
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
-    const waveGridData = new Float32Array(gridSize * 8);
-    let phase = 0;
-    const omega = 2.0 * Math.PI / 14.0;
-    const base_d = 10.0;
-    const c_base = Math.sqrt(9.81 * base_d);
-    const base_amplitude = 1.5;
-
-    for (let i = 0; i < gridSize; i++) {
-        let x = (i / gridSize) * domainLength;
-        let d = 10.0;
-        if (x > 70 && x < 90) d = 10.0 - 8.0 * ((x - 70) / 20.0);
-        else if (x >= 90 && x <= 110) d = 2.0;
-        else if (x > 110 && x < 130) d = 2.0 + 8.0 * ((x - 110) / 20.0);
-        
-        let c = Math.sqrt(9.81 * d);
-        let k = omega / c;
-        let amp = base_amplitude * Math.sqrt(c_base / c);
-        
-        const max_H = 0.78 * d;
-        if (amp * 2.0 > max_H) amp = max_H / 2.0;
-        
-        waveGridData[i * 8 + 0] = -d;
-        waveGridData[i * 8 + 1] = amp;
-        waveGridData[i * 8 + 2] = phase;
-        waveGridData[i * 8 + 3] = k;
-        waveGridData[i * 8 + 4] = c;
-        waveGridData[i * 8 + 5] = max_H;
-        
-        phase += k * (domainLength / gridSize);
-    }
-    device.queue.writeBuffer(waveGridBuffer, 0, waveGridData);
+    const gridCellsBuffer = device.createBuffer({
+        size: numCells * 256, // 64 u32s per cell
+        usage: GPUBufferUsage.STORAGE,
+    });
 
     const uniformBuffer = device.createBuffer({
-        size: 16,
+        size: 40, // 10 * 4 bytes
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
@@ -297,8 +326,8 @@ window.waveStart = async function() {
     function updateCamera(time) {
         const aspect = canvas.width / canvas.height;
         const proj = perspective(Math.PI / 4, aspect, 0.1, 1000.0);
-        const cx = 100.0 + Math.sin(time * 0.1) * 15.0;
-        const view = lookAt([cx, -45, 12], [cx + 10.0, 0, -1], [0, 0, 1]);
+        const cx = 100.0;
+        const view = lookAt([cx, -60, 15], [cx + 10.0, 0, -1], [0, 0, 1]);
         const viewProj = multiply(proj, view);
         device.queue.writeBuffer(cameraBuffer, 0, viewProj);
     }
@@ -306,19 +335,27 @@ window.waveStart = async function() {
     const shaderModule = device.createShaderModule({ code: COMPUTE_SHADER_CODE });
     const renderShaderModule = device.createShaderModule({ code: RENDER_SHADER_CODE });
 
-    const computePipeline = device.createComputePipeline({
-        layout: 'auto',
-        compute: { module: shaderModule, entryPoint: 'compute_main' },
+    const computeBindGroupLayout = device.createBindGroupLayout({
+        entries: [
+            { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+            { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+            { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+            { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+        ]
+    });
+    
+    const computePipelineLayout = device.createPipelineLayout({
+        bindGroupLayouts: [computeBindGroupLayout]
     });
 
-    
+    const pipelineClearGrid = device.createComputePipeline({ layout: computePipelineLayout, compute: { module: shaderModule, entryPoint: 'clear_grid' } });
+    const pipelinePredictBin = device.createComputePipeline({ layout: computePipelineLayout, compute: { module: shaderModule, entryPoint: 'predict_and_bin' } });
+    const pipelineSolvePBF = device.createComputePipeline({ layout: computePipelineLayout, compute: { module: shaderModule, entryPoint: 'solve_pbf' } });
+    const pipelineVelocity = device.createComputePipeline({ layout: computePipelineLayout, compute: { module: shaderModule, entryPoint: 'update_velocity' } });
 
     const renderPipeline = device.createRenderPipeline({
         layout: 'auto',
-        vertex: {
-            module: renderShaderModule,
-            entryPoint: 'vertex_main',
-        },
+        vertex: { module: renderShaderModule, entryPoint: 'vertex_main' },
         fragment: {
             module: renderShaderModule,
             entryPoint: 'fragment_main',
@@ -330,26 +367,24 @@ window.waveStart = async function() {
                 }
             }],
         },
-        primitive: { topology: 'triangle-list' },
-        
+        primitive: { topology: 'triangle-list' }
     });
 
     const bindGroupCompute = device.createBindGroup({
-        layout: computePipeline.getBindGroupLayout(0),
+        layout: computeBindGroupLayout,
         entries: [
             { binding: 0, resource: { buffer: uniformBuffer } },
             { binding: 2, resource: { buffer: particleBuffer } },
-            { binding: 3, resource: { buffer: waveGridBuffer } },
+            { binding: 3, resource: { buffer: gridCountersBuffer } },
+            { binding: 4, resource: { buffer: gridCellsBuffer } },
         ],
     });
     
     const bindGroupRender = device.createBindGroup({
         layout: renderPipeline.getBindGroupLayout(0),
         entries: [
-            { binding: 0, resource: { buffer: uniformBuffer } },
             { binding: 1, resource: { buffer: cameraBuffer } },
             { binding: 2, resource: { buffer: particleBuffer } },
-            { binding: 3, resource: { buffer: waveGridBuffer } },
         ],
     });
 
@@ -364,19 +399,48 @@ window.waveStart = async function() {
 
         const now = performance.now();
         const time = (now - startTime) / 1000.0;
-
-        device.queue.writeBuffer(uniformBuffer, 0, new Float32Array([time, domainLength]));
-        device.queue.writeBuffer(uniformBuffer, 8, new Uint32Array([numParticles, gridSize]));
+        
+        // time, domain, num_particles, resX
+        // resY, resZ, h, mass
+        // rest_density, dt
+        const uniformData = new ArrayBuffer(40);
+        const floatView = new Float32Array(uniformData);
+        const uintView = new Uint32Array(uniformData);
+        
+        floatView[0] = time;
+        floatView[1] = domainLength;
+        uintView[2] = numParticles;
+        uintView[3] = gridResX;
+        uintView[4] = gridResY;
+        uintView[5] = gridResZ;
+        floatView[6] = h;
+        floatView[7] = 1.0; // mass
+        floatView[8] = 1000.0; // rest_density
+        floatView[9] = 0.016; // dt
+        
+        device.queue.writeBuffer(uniformBuffer, 0, uniformData);
 
         updateCamera(time);
 
         const commandEncoder = device.createCommandEncoder();
 
         const computePass = commandEncoder.beginComputePass();
-        computePass.setPipeline(computePipeline);
         computePass.setBindGroup(0, bindGroupCompute);
-        const workgroupCount = Math.ceil(numParticles / 256);
-        computePass.dispatchWorkgroups(workgroupCount);
+        
+        computePass.setPipeline(pipelineClearGrid);
+        computePass.dispatchWorkgroups(Math.ceil(numCells / 256));
+        
+        const wgParticles = Math.ceil(numParticles / 256);
+        computePass.setPipeline(pipelinePredictBin);
+        computePass.dispatchWorkgroups(wgParticles);
+        
+        // Multiple solver iterations
+        computePass.setPipeline(pipelineSolvePBF);
+        computePass.dispatchWorkgroups(wgParticles);
+        
+        computePass.setPipeline(pipelineVelocity);
+        computePass.dispatchWorkgroups(wgParticles);
+        
         computePass.end();
 
         const renderPass = commandEncoder.beginRenderPass({
@@ -385,8 +449,7 @@ window.waveStart = async function() {
                 clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
                 loadOp: 'clear',
                 storeOp: 'store',
-            }],
-            
+            }]
         });
         renderPass.setPipeline(renderPipeline);
         renderPass.setBindGroup(0, bindGroupRender);
@@ -399,7 +462,6 @@ window.waveStart = async function() {
 
     frame();
 }
-
 window.waveStop = function() {
     waveRunning = false;
 }
