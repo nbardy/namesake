@@ -89,19 +89,188 @@ fn predict_and_bin(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
 }
 
-@compute @workgroup_size(256)
-fn solve_pbf(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    // Phase 2: Density and Lambda
+
+const W_POLY6_COEFF = 1.56668147106; // 315 / (64 * pi)
+fn W_poly6(r2: f32, h: f32) -> f32 {
+    let h2 = h * h;
+    if (r2 >= h2 || r2 < 0.0) { return 0.0; }
+    let term = h2 - r2;
+    return (W_POLY6_COEFF / pow(h, 9.0)) * term * term * term;
 }
+
+const W_SPIKY_GRAD_COEFF = -14.3239448782; // -45 / pi
+fn W_spiky_grad(r_vec: vec3<f32>, r: f32, h: f32) -> vec3<f32> {
+    if (r >= h || r <= 0.0001) { return vec3<f32>(0.0); }
+    let term = h - r;
+    return (W_SPIKY_GRAD_COEFF / pow(h, 6.0)) * term * term * normalize(r_vec);
+}
+
+@compute @workgroup_size(256)
+fn compute_lambda(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let index = global_id.x;
+    if (index >= uniforms.num_particles) { return; }
+
+    var p = particles[index];
+    let p_pos = vec3<f32>(p.pred_x, p.pred_y, p.pred_z);
+    let coords = get_cell_coords(p_pos);
+    
+    var density = 0.0;
+    var grad_c_i_sum = vec3<f32>(0.0);
+    var sum_grad_c_sq = 0.0;
+    
+    let h = uniforms.h;
+    let h2 = h * h;
+    
+    // Analytical Shoal Floor Approximation
+    let shoal_x = 100.0;
+    let dx = p_pos.x - shoal_x;
+    let floor_z = -10.0 + 8.0 * exp(-(dx * dx) / 200.0);
+    let dist_to_floor = p_pos.z - floor_z;
+    if (dist_to_floor < h) {
+        let ratio = max(0.0, 1.0 - max(dist_to_floor, 0.0) / h);
+        density += uniforms.rest_density * 0.8 * ratio * ratio * ratio;
+    }
+
+    for (var dz = -1; dz <= 1; dz++) {
+        for (var dy = -1; dy <= 1; dy++) {
+            for (var dx_c = -1; dx_c <= 1; dx_c++) {
+                let cell = coords + vec3<i32>(dx_c, dy, dz);
+                let cell_idx = get_cell_index(cell);
+                let count = min(grid_counters[cell_idx], 64u);
+                
+                for (var i = 0u; i < count; i++) {
+                    let j = grid_cells[cell_idx].p_ids[i];
+                    let n = particles[j];
+                    let n_pos = vec3<f32>(n.pred_x, n.pred_y, n.pred_z);
+                    
+                    let r_vec = p_pos - n_pos;
+                    let r2 = dot(r_vec, r_vec);
+                    
+                    if (r2 < h2) {
+                        density += uniforms.mass * W_poly6(r2, h);
+                        
+                        if (index != j) {
+                            let r = sqrt(max(r2, 0.0001));
+                            let grad_j = (uniforms.mass / uniforms.rest_density) * W_spiky_grad(r_vec, r, h);
+                            grad_c_i_sum += grad_j;
+                            sum_grad_c_sq += dot(grad_j, grad_j);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    sum_grad_c_sq += dot(grad_c_i_sum, grad_c_i_sum);
+    
+    // Only enforce constraint if density is higher than rest density (fluid is compressible inwards slightly, but resists outward expansion and compression)
+    let C = max(density / uniforms.rest_density - 1.0, 0.0);
+    p.density = density;
+    
+    let eps = 100.0;
+    p.lambda = -C / (sum_grad_c_sq + eps);
+    
+    particles[index] = p;
+}
+
+@compute @workgroup_size(256)
+fn compute_delta(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let index = global_id.x;
+    if (index >= uniforms.num_particles) { return; }
+
+    var p = particles[index];
+    let p_pos = vec3<f32>(p.pred_x, p.pred_y, p.pred_z);
+    let coords = get_cell_coords(p_pos);
+    
+    var delta_p = vec3<f32>(0.0);
+    let h = uniforms.h;
+    let h2 = h * h;
+    
+    let k_art = 0.0001;
+    let dq = 0.2 * h;
+    let w_dq = W_poly6(dq*dq, h);
+    
+    for (var dz = -1; dz <= 1; dz++) {
+        for (var dy = -1; dy <= 1; dy++) {
+            for (var dx_c = -1; dx_c <= 1; dx_c++) {
+                let cell = coords + vec3<i32>(dx_c, dy, dz);
+                let cell_idx = get_cell_index(cell);
+                let count = min(grid_counters[cell_idx], 64u);
+                
+                for (var i = 0u; i < count; i++) {
+                    let j = grid_cells[cell_idx].p_ids[i];
+                    if (index == j) { continue; }
+                    
+                    let n = particles[j];
+                    let n_pos = vec3<f32>(n.pred_x, n.pred_y, n.pred_z);
+                    
+                    let r_vec = p_pos - n_pos;
+                    let r2 = dot(r_vec, r_vec);
+                    
+                    if (r2 < h2) {
+                        let r = sqrt(max(r2, 0.0001));
+                        
+                        // Artificial pressure
+                        let scorr = -k_art * pow(W_poly6(r2, h) / max(w_dq, 0.001), 4.0);
+                        
+                        let term = p.lambda + n.lambda + scorr;
+                        delta_p += (uniforms.mass / uniforms.rest_density) * term * W_spiky_grad(r_vec, r, h);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Analytical Collision Penalty
+    let shoal_x = 100.0;
+    let dx_val = p_pos.x - shoal_x;
+    let floor_z = -10.0 + 8.0 * exp(-(dx_val * dx_val) / 200.0);
+    let dist_to_floor = p_pos.z - floor_z;
+    
+    if (dist_to_floor < 0.0) {
+        let deriv_x = 8.0 * (-dx_val / 100.0) * exp(-(dx_val * dx_val) / 200.0);
+        let normal = normalize(vec3<f32>(-deriv_x, 0.0, 1.0));
+        delta_p += normal * (-dist_to_floor * 1.5);
+    }
+    
+    p.pred_x += delta_p.x;
+    p.pred_y += delta_p.y;
+    p.pred_z += delta_p.z;
+    
+    particles[index] = p;
+}
+
 
 @compute @workgroup_size(256)
 fn update_velocity(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let index = global_id.x;
     if (index >= uniforms.num_particles) { return; }
     var p = particles[index];
+    
+    p.vel_x = (p.pred_x - p.pos_x) / uniforms.dt;
+    p.vel_y = (p.pred_y - p.pos_y) / uniforms.dt;
+    p.vel_z = (p.pred_z - p.pos_z) / uniforms.dt;
+    
+    // Add wave generator logic here?
+    // Let's create a wave maker paddle on the left boundary
+    if (p.pred_x < 5.0) {
+        let paddle_vel = 3.0 * cos(uniforms.time * 2.0 * 3.14159 / 10.0);
+        p.vel_x = max(p.vel_x, paddle_vel);
+    }
+    
+    // Velocity cap for stability
+    let speed_sq = p.vel_x*p.vel_x + p.vel_y*p.vel_y + p.vel_z*p.vel_z;
+    if (speed_sq > 400.0) {
+        let factor = 20.0 / sqrt(speed_sq);
+        p.vel_x *= factor;
+        p.vel_y *= factor;
+        p.vel_z *= factor;
+    }
+    
     p.pos_x = p.pred_x;
     p.pos_y = p.pred_y;
     p.pos_z = p.pred_z;
+    
     particles[index] = p;
 }
 `;
@@ -350,7 +519,8 @@ window.waveStart = async function() {
 
     const pipelineClearGrid = device.createComputePipeline({ layout: computePipelineLayout, compute: { module: shaderModule, entryPoint: 'clear_grid' } });
     const pipelinePredictBin = device.createComputePipeline({ layout: computePipelineLayout, compute: { module: shaderModule, entryPoint: 'predict_and_bin' } });
-    const pipelineSolvePBF = device.createComputePipeline({ layout: computePipelineLayout, compute: { module: shaderModule, entryPoint: 'solve_pbf' } });
+    const pipelineLambda = device.createComputePipeline({ layout: computePipelineLayout, compute: { module: shaderModule, entryPoint: 'compute_lambda' } });
+    const pipelineDelta = device.createComputePipeline({ layout: computePipelineLayout, compute: { module: shaderModule, entryPoint: 'compute_delta' } });
     const pipelineVelocity = device.createComputePipeline({ layout: computePipelineLayout, compute: { module: shaderModule, entryPoint: 'update_velocity' } });
 
     const renderPipeline = device.createRenderPipeline({
@@ -435,8 +605,13 @@ window.waveStart = async function() {
         computePass.dispatchWorkgroups(wgParticles);
         
         // Multiple solver iterations
-        computePass.setPipeline(pipelineSolvePBF);
-        computePass.dispatchWorkgroups(wgParticles);
+        for (let iter = 0; iter < 3; iter++) {
+            computePass.setPipeline(pipelineLambda);
+            computePass.dispatchWorkgroups(wgParticles);
+            
+            computePass.setPipeline(pipelineDelta);
+            computePass.dispatchWorkgroups(wgParticles);
+        }
         
         computePass.setPipeline(pipelineVelocity);
         computePass.dispatchWorkgroups(wgParticles);
