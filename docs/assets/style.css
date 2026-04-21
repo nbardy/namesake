@@ -2,16 +2,29 @@ body {
   padding: 0;
   margin: 0;
 }
+body.lava-active {
+  background-color: #000;
+  overflow: hidden;
+}
 
 h1 {
   font-family: 'Permanent Marker', cursive;
+}
+
+/* ── Elven Common Speak font ── */
+@font-face {
+  font-family: 'Elven Common Speak';
+  src: url('fonts/Elvencommonspeak-0WXz.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
 }
 
 /* ── WebGL effects canvas ── */
 
 /* WebGL canvas overlays the Elm canvas when active.
    z-index 10 sits above Elm's canvas (auto/0) but below UI (900+) */
-#fx-canvas {
+#fx-canvas,
+#fx-canvas-gpu {
   position: fixed;
   top: 0;
   left: 0;
@@ -23,8 +36,26 @@ h1 {
   transition: opacity 0.4s;
 }
 
-#fx-canvas.fx-active {
+#fx-canvas.fx-active,
+#fx-canvas-gpu.fx-active,
+#flame-canvas.fx-active,
+#knot-canvas.fx-active,
+#wave-canvas.fx-active {
   opacity: 1;
+}
+
+#flame-canvas,
+#knot-canvas,
+#wave-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s;
 }
 
 #site-name {
@@ -56,6 +87,13 @@ body.lava-active #site-name,
   display: block;
   visibility: visible;
   opacity: 1;
+}
+
+/* Hide Elm canvas when an overlay is active to save browser rendering overhead */
+body.lava-active > div:not([id]) > div:first-child {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.4s, visibility 0.4s;
 }
 
 /* ── Background buttons (top-left) — no box, just floating ── */
@@ -137,7 +175,7 @@ body.lava-active #site-name,
   content: '';
   position: absolute;
   top: 50%;
-  right: 8px;
+  right: 20px;
   width: 48px;
   height: 4px;
   background: rgba(255, 255, 255, 0.95);
@@ -147,6 +185,12 @@ body.lava-active #site-name,
     0 0 18px rgba(255, 255, 255, 0.45);
   transition: opacity 0.4s, width 0.4s;
   pointer-events: none;
+  animation: hint-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes hint-pulse {
+  0%, 100% { opacity: 0.6; box-shadow: 0 0 10px rgba(255,255,255,0.6), 0 0 18px rgba(255,255,255,0.3); }
+  50%      { opacity: 1;   box-shadow: 0 0 14px rgba(255,255,255,1),   0 0 28px rgba(255,255,255,0.6); }
 }
 
 /* Buttons start invisible */
@@ -348,4 +392,18 @@ body.lava-active #site-name,
   font-size: 0.9rem;
   margin: 0;
   color: rgba(255,255,255,0.8);
+}
+
+#wave-canvas {
+  background-color: #051020;
+  background-image: 
+    radial-gradient(circle at 60% 40%, #ffffff 0%, #ffffff 3%, rgba(255,255,255,0.8) 5%, rgba(255,255,255,0) 15%),
+    radial-gradient(circle at 25% 20%, #ffffff 0%, rgba(255,255,255,0) 10%),
+    radial-gradient(circle at 30% 22%, #ffffff 0%, rgba(255,255,255,0) 15%),
+    radial-gradient(circle at 20% 23%, #ffffff 0%, rgba(255,255,255,0) 8%),
+    radial-gradient(circle at 75% 15%, #ffffff 0%, rgba(255,255,255,0) 12%),
+    radial-gradient(circle at 82% 18%, #ffffff 0%, rgba(255,255,255,0) 10%),
+    linear-gradient(to bottom, #ffffff 0%, #d0e8f8 20%, #aaccff 40%, rgba(170,204,255,0) 60%);
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
 }

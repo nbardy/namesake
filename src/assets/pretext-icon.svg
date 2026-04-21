@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Torus outline -->
+  <ellipse cx="32" cy="32" rx="24" ry="12" stroke="#c084fc" stroke-width="2.5" fill="none"/>
+  <ellipse cx="32" cy="32" rx="24" ry="12" stroke="#818cf8" stroke-width="1.5" fill="none" transform="rotate(90 32 32)"/>
+  <!-- Text hint lines spiraling -->
+  <path d="M14 28 Q22 20 32 22 Q42 24 50 28" stroke="#e0b0ff" stroke-width="1.2" fill="none" stroke-dasharray="3 2"/>
+  <path d="M12 34 Q22 26 32 28 Q42 30 52 34" stroke="#d8b4fe" stroke-width="1.0" fill="none" stroke-dasharray="2 2"/>
+  <path d="M14 40 Q22 32 32 34 Q42 36 50 40" stroke="#c084fc" stroke-width="0.8" fill="none" stroke-dasharray="2 3"/>
+  <!-- "T" letter -->
+  <text x="28" y="37" font-size="14" font-weight="bold" fill="#e9d5ff" font-family="serif">T</text>
+</svg>

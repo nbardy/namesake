@@ -94,10 +94,12 @@
 	//
 
 	//elm-hot callback
-	elm.hot.subscribe(function (event, context) {
-	  console.log('elm-hot event:', event)
-	  context.state.swapCount ++
-	})
+	if (elm.hot && typeof elm.hot.subscribe === 'function') {
+	  elm.hot.subscribe(function (event, context) {
+	    console.log('elm-hot event:', event)
+	    context.state.swapCount ++
+	  })
+	}
 
 
 /***/ }),

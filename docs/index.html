@@ -13,6 +13,10 @@
 
     <!-- WebGL effects canvas (sits between Elm canvas and UI) -->
     <canvas id="fx-canvas"></canvas>
+    <canvas id="fx-canvas-gpu"></canvas>
+    <canvas id="wave-canvas"></canvas>
+    <!-- pretext-canvas: placeholder replaced by pretext.js with a 3D DOM container -->
+    <div id="pretext-canvas"></div>
     <div id="site-name" aria-hidden="true">Nicholas Bardy</div>
 
     <!-- SPA Nav + Overlay system (mounted on top of Elm canvas) -->
@@ -124,7 +128,16 @@
     })();
     </script>
 
+    <!-- Flame + ring canvas -->
+    <canvas id="flame-canvas"></canvas>
+    <canvas id="knot-canvas"></canvas>
+    <!-- Pretext torus renderer -->
+    <script src="assets/pretext.js"></script>
+    <script src="assets/flame.js"></script>
+    <script src="assets/reflow-knot.js"></script>
     <!-- WebGL FBM effects (improved stars + lava lamp) -->
     <script src="assets/fx.js"></script>
+    <!-- WebGPU wave simulation -->
+    <script src="assets/wave.js"></script>
   </body>
 </html>

@@ -1,10 +1,9 @@
-// fx.js — WebGL effects overlay for namesake site
-// Replaces Elm stars with a WebGL lava mode
+// fx.js — WebGL/WebGPU effects overlay for namesake site
 (function () {
   'use strict';
 
   // ── State ──
-  var activeMode = null;        // null | 'lava' | 'lava2'
+  var activeMode = null;        // null | 'lava' | 'lava2' | 'lava3' | 'pretext' | 'flame' | 'knot'
   var mouseX = 0, mouseY = 0;   // raw pointer
   var smoothX = 0, smoothY = 0; // delayed pointer
   var flowX = 0, flowY = 0;     // smoothed pointer velocity
@@ -12,30 +11,50 @@
   var travelVX = 0, travelVY = 0;
   var travelZ = 0;
   var travelVZ = 0;
+  var viewForwardX = 0, viewForwardY = 0, viewForwardZ = 1;
+  var viewUpX = 0, viewUpY = 1, viewUpZ = 0;
+  var bankAngle = 0;
   var pointerEnergy = 0;
   var pointerDown = false;
   var lastPointerTime = 0;
   var startTime = Date.now();
   var lastFrameTime = startTime;
-  var gl, canvas, siteName;
+  var gl, canvas, gpuCanvas, siteName;
   var programs = {};
+  var gpuRenderer = null;
+  var gpuInitPromise = null;
   var animFrame = null;
   var buttonsWired = false;
 
   // ── Canvas setup ──
   canvas = document.getElementById('fx-canvas');
+  gpuCanvas = document.getElementById('fx-canvas-gpu');
   siteName = document.getElementById('site-name');
-  if (!canvas) { console.warn('fx.js: no #fx-canvas'); return; }
-  gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-  if (!gl) { console.warn('fx.js: no WebGL'); return; }
+  if (!canvas && !gpuCanvas) { console.warn('fx.js: no effect canvas'); return; }
+  if (canvas) {
+    gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    if (!gl) console.warn('fx.js: no WebGL');
+  }
+
+  function resizeSurface(target, renderScale, dprCap) {
+    if (!target) return;
+    var dpr = Math.min(window.devicePixelRatio || 1, dprCap || 4);
+    var scale = renderScale || 1;
+    target.width = Math.max(1, Math.floor(window.innerWidth * dpr * scale));
+    target.height = Math.max(1, Math.floor(window.innerHeight * dpr * scale));
+    target.style.width = window.innerWidth + 'px';
+    target.style.height = window.innerHeight + 'px';
+  }
 
   function resize() {
-    var dpr = window.devicePixelRatio || 1;
-    canvas.width = window.innerWidth * dpr;
-    canvas.height = window.innerHeight * dpr;
-    canvas.style.width = window.innerWidth + 'px';
-    canvas.style.height = window.innerHeight + 'px';
-    gl.viewport(0, 0, canvas.width, canvas.height);
+    resizeSurface(canvas, 0.88, 1.25);
+    resizeSurface(gpuCanvas, 0.82, 1.25);
+    if (gl && canvas) {
+      gl.viewport(0, 0, canvas.width, canvas.height);
+    }
+    if (gpuRenderer && gpuCanvas) {
+      gpuRenderer.resize(gpuCanvas.width, gpuCanvas.height);
+    }
   }
   window.addEventListener('resize', resize);
   resize();
@@ -48,6 +67,36 @@
 
   function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
+  }
+
+  function dot3(ax, ay, az, bx, by, bz) {
+    return ax * bx + ay * by + az * bz;
+  }
+
+  function cross3(ax, ay, az, bx, by, bz) {
+    return [
+      ay * bz - az * by,
+      az * bx - ax * bz,
+      ax * by - ay * bx
+    ];
+  }
+
+  function normalize3(x, y, z, fallback) {
+    var len = Math.sqrt(x * x + y * y + z * z);
+    if (len < 1e-5) return fallback ? fallback.slice() : [0, 0, 1];
+    return [x / len, y / len, z / len];
+  }
+
+  function rotateAroundAxis(vec, axis, angle) {
+    var cosA = Math.cos(angle);
+    var sinA = Math.sin(angle);
+    var dotVA = dot3(vec[0], vec[1], vec[2], axis[0], axis[1], axis[2]);
+    var crossVA = cross3(axis[0], axis[1], axis[2], vec[0], vec[1], vec[2]);
+    return [
+      vec[0] * cosA + crossVA[0] * sinA + axis[0] * dotVA * (1 - cosA),
+      vec[1] * cosA + crossVA[1] * sinA + axis[1] * dotVA * (1 - cosA),
+      vec[2] * cosA + crossVA[2] * sinA + axis[2] * dotVA * (1 - cosA)
+    ];
   }
 
   function registerPointer(x, y) {
@@ -342,6 +391,7 @@
 
   // ── Shader compilation ──
   function compileShader(src, type) {
+    if (!gl) return null;
     var s = gl.createShader(type);
     gl.shaderSource(s, src);
     gl.compileShader(s);
@@ -354,6 +404,7 @@
   }
 
   function createProgram(name, fragSrc) {
+    if (!gl) return null;
     var vs = compileShader(VERT, gl.VERTEX_SHADER);
     var fs = compileShader(fragSrc, gl.FRAGMENT_SHADER);
     if (!vs || !fs) { console.error('fx.js: failed to compile', name); return null; }
@@ -383,25 +434,409 @@
   programs.lava2 = createProgram('lava2', FRAG_LAVA2);
 
   // fullscreen quad
-  var quad = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, quad);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+  var quad = null;
+  if (gl) {
+    quad = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+  }
+
+  function createLava3Renderer(target) {
+    if (!target || !navigator.gpu) return Promise.resolve(null);
+
+    var atlasCols = 8;
+    var atlasRows = 8;
+    var sliceCount = atlasCols * atlasRows;
+    var sliceSize = 192;
+    var planeCount = 14;
+    var spacing = 2.15;
+    var sliceScale = 0.095;
+    var format = navigator.gpu.getPreferredCanvasFormat();
+    var computeParamsData = new Float32Array([
+      sliceSize, atlasCols, atlasRows, sliceCount,
+      8.0, 17.0, 0.17, 0.0
+    ]);
+    var renderParamsData = new Float32Array(20);
+
+    var computeShader = [
+      'struct BakeParams {',
+      '  header0: vec4<f32>,',
+      '  header1: vec4<f32>,',
+      '};',
+      '@group(0) @binding(0) var atlasTex: texture_storage_2d<rgba8unorm, write>;',
+      '@group(0) @binding(1) var<uniform> params: BakeParams;',
+      '',
+      'fn hash21(p: vec2<f32>) -> f32 {',
+      '  let h = dot(p, vec2<f32>(127.1, 311.7));',
+      '  return fract(sin(h) * 43758.5453123);',
+      '}',
+      '',
+      'fn wrap2(p: vec2<f32>, period: f32) -> vec2<f32> {',
+      '  return p - floor(p / period) * period;',
+      '}',
+      '',
+      'fn tileNoise(p: vec2<f32>, period: f32) -> f32 {',
+      '  let i = floor(p);',
+      '  let f = fract(p);',
+      '  let a = hash21(wrap2(i, period));',
+      '  let b = hash21(wrap2(i + vec2<f32>(1.0, 0.0), period));',
+      '  let c = hash21(wrap2(i + vec2<f32>(0.0, 1.0), period));',
+      '  let d = hash21(wrap2(i + vec2<f32>(1.0, 1.0), period));',
+      '  let u = f * f * (vec2<f32>(3.0, 3.0) - 2.0 * f);',
+      '  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);',
+      '}',
+      '',
+      'fn tileFbm(p: vec2<f32>, period: f32, seed: f32) -> f32 {',
+      '  var q = p + vec2<f32>(seed * 0.37, -seed * 0.21);',
+      '  var per = period;',
+      '  var amp = 0.5;',
+      '  var total = 0.0;',
+      '  for (var i = 0; i < 4; i = i + 1) {',
+      '    total = total + amp * tileNoise(q, per);',
+      '    q = q * 2.03 + vec2<f32>(11.7, 3.1);',
+      '    per = per * 2.0;',
+      '    amp = amp * 0.5;',
+      '  }',
+      '  return total;',
+      '}',
+      '',
+      '@compute @workgroup_size(8, 8, 1)',
+      'fn main(@builtin(global_invocation_id) gid: vec3<u32>) {',
+      '  let sliceSize = u32(params.header0.x);',
+      '  let atlasCols = u32(params.header0.y);',
+      '  let atlasRows = u32(params.header0.z);',
+      '  let sliceCount = u32(params.header0.w);',
+      '  let totalWidth = atlasCols * sliceSize;',
+      '  let totalHeight = atlasRows * sliceSize;',
+      '  if (gid.x >= totalWidth || gid.y >= totalHeight) {',
+      '    return;',
+      '  }',
+      '  let tile = vec2<u32>(gid.x / sliceSize, gid.y / sliceSize);',
+      '  let sliceIndex = tile.x + tile.y * atlasCols;',
+      '  if (sliceIndex >= sliceCount) {',
+      '    return;',
+      '  }',
+      '  let local = vec2<f32>(',
+      '    f32(gid.x % sliceSize) / f32(sliceSize),',
+      '    f32(gid.y % sliceSize) / f32(sliceSize)',
+      '  );',
+      '  let scale = params.header1.x;',
+      '  let seed = params.header1.y + f32(sliceIndex) * params.header1.z;',
+      '  let p = local * scale;',
+      '  var density = tileFbm(p + vec2<f32>(seed * 0.13, -seed * 0.07), 8.0, seed) * 0.74;',
+      '  density = density + tileFbm(p * 2.1 + vec2<f32>(4.3 - seed * 0.05, 1.7 + seed * 0.03), 16.0, seed * 1.3) * 0.26;',
+      '  let carve = tileFbm(p * 0.52 + vec2<f32>(seed * 0.07, seed * 0.04), 4.0, seed * 0.61);',
+      '  density = density - carve * 0.22;',
+      '  density = clamp(density, 0.0, 1.0);',
+      '  textureStore(atlasTex, vec2<i32>(i32(gid.x), i32(gid.y)), vec4<f32>(density, density, density, 1.0));',
+      '}'
+    ].join('\n');
+
+    var renderShader = [
+      'struct RenderParams {',
+      '  viewport: vec4<f32>,',
+      '  camera: vec4<f32>,',
+      '  forwardData: vec4<f32>,',
+      '  upData: vec4<f32>,',
+      '  atlas: vec4<f32>,',
+      '};',
+      '',
+      '@group(0) @binding(0) var<uniform> params: RenderParams;',
+      '@group(0) @binding(1) var atlasTex: texture_2d<f32>;',
+      '@group(0) @binding(2) var atlasSampler: sampler;',
+      '',
+      'struct VsOut {',
+      '  @builtin(position) pos: vec4<f32>,',
+      '  @location(0) uv: vec2<f32>,',
+      '};',
+      '',
+      '@vertex',
+      'fn vsMain(@builtin(vertex_index) index: u32) -> VsOut {',
+      '  var positions = array<vec2<f32>, 3>(',
+      '    vec2<f32>(-1.0, -3.0),',
+      '    vec2<f32>(-1.0, 1.0),',
+      '    vec2<f32>(3.0, 1.0)',
+      '  );',
+      '  var out: VsOut;',
+      '  let pos = positions[index];',
+      '  out.pos = vec4<f32>(pos, 0.0, 1.0);',
+      '  out.uv = pos * 0.5 + vec2<f32>(0.5, 0.5);',
+      '  return out;',
+      '}',
+      '',
+      'fn planeColor(plane: f32) -> vec3<f32> {',
+      '  let tone = plane - floor(plane / 3.0) * 3.0;',
+      '  if (tone < 0.5) { return vec3<f32>(0.18, 0.07, 0.30); }',
+      '  if (tone < 1.5) { return vec3<f32>(0.38, 0.18, 0.58); }',
+      '  return vec3<f32>(0.70, 0.50, 0.92);',
+      '}',
+      '',
+      'fn atlasUv(slice: f32, localUv: vec2<f32>) -> vec2<f32> {',
+      '  let cols = params.atlas.x;',
+      '  let col = slice - floor(slice / cols) * cols;',
+      '  let row = floor(slice / cols);',
+      '  return (vec2<f32>(col, row) + localUv) / vec2<f32>(params.atlas.x, params.atlas.y);',
+      '}',
+      '',
+      'fn safeTileUv(localUv: vec2<f32>) -> vec2<f32> {',
+      '  let pad = params.viewport.w * 2.0;',
+      '  return fract(localUv) * (1.0 - pad * 2.0) + vec2<f32>(pad, pad);',
+      '}',
+      '',
+      '@fragment',
+      'fn fsMain(in: VsOut) -> @location(0) vec4<f32> {',
+      '  let uv = vec2<f32>(',
+      '    in.pos.x / max(params.viewport.x, 1.0),',
+      '    in.pos.y / max(params.viewport.y, 1.0)',
+      '  );',
+      '  let centered = uv - vec2<f32>(0.5, 0.5);',
+      '  let aspect = params.viewport.z;',
+      '  let texel = vec2<f32>(params.viewport.w, params.viewport.w);',
+      '  let p = vec2<f32>(centered.x * aspect, centered.y);',
+      '  let forward = normalize(params.forwardData.xyz);',
+      '  let up = normalize(params.upData.xyz);',
+      '  let right = normalize(cross(forward, up));',
+      '  let ray = normalize(right * p.x + up * p.y + forward * 1.15);',
+      '  let cameraXY = params.camera.xy;',
+      '  let cameraZ = params.camera.z;',
+      '  let energy = params.camera.w;',
+      '  let spacing = params.forwardData.w;',
+      '  let planeCount = u32(params.upData.w);',
+      '  let sliceScale = params.atlas.z;',
+      '  let sliceCount = params.atlas.w;',
+      '  var color = vec3<f32>(0.0, 0.0, 0.0);',
+      '  var accum = 0.0;',
+      '  let forwardSign = select(-1.0, 1.0, forward.z >= 0.0);',
+      '  let basePlane = select(ceil(cameraZ / spacing), floor(cameraZ / spacing), forward.z >= 0.0);',
+      '  for (var i: u32 = 0u; i < 12u; i = i + 1u) {',
+      '    if (i >= planeCount) { break; }',
+      '    let plane = basePlane + forwardSign * (1.0 + f32(i));',
+      '    let planeZ = plane * spacing;',
+      '    if (abs(ray.z) < 0.0005) { continue; }',
+      '    let rayT = (planeZ - cameraZ) / ray.z;',
+      '    if (rayT <= 0.0) { continue; }',
+      '    let nearFade = smoothstep(0.08, 0.38, rayT);',
+      '    let hit = cameraXY + ray.xy * rayT;',
+      '    let chunk = floor(plane / max(sliceCount, 1.0));',
+      '    let sampleUv = fract(hit * sliceScale + vec2<f32>(plane * 0.173 + chunk * 0.137, plane * 0.097 - chunk * 0.081));',
+      '    let baseUv = safeTileUv(sampleUv);',
+      '    let slice = plane - floor(plane / sliceCount) * sliceCount;',
+      '    let filteredDensity = (',
+      '      textureSampleLevel(atlasTex, atlasSampler, atlasUv(slice, baseUv), 0.0).r * 2.0 +',
+      '      textureSampleLevel(atlasTex, atlasSampler, atlasUv(slice, safeTileUv(sampleUv + vec2<f32>( texel.x, 0.0))), 0.0).r +',
+      '      textureSampleLevel(atlasTex, atlasSampler, atlasUv(slice, safeTileUv(sampleUv + vec2<f32>(-texel.x, 0.0))), 0.0).r +',
+      '      textureSampleLevel(atlasTex, atlasSampler, atlasUv(slice, safeTileUv(sampleUv + vec2<f32>(0.0,  texel.y))), 0.0).r +',
+      '      textureSampleLevel(atlasTex, atlasSampler, atlasUv(slice, safeTileUv(sampleUv + vec2<f32>(0.0, -texel.y))), 0.0).r',
+      '    ) / 6.0;',
+      '    let closeFactor = 1.0 - smoothstep(0.45, 1.85, rayT);',
+      '    let detailUv = safeTileUv(sampleUv * (2.2 + closeFactor * 1.6) + vec2<f32>(plane * 0.031, -plane * 0.027));',
+      '    let detailDensity = textureSampleLevel(atlasTex, atlasSampler, atlasUv(slice, detailUv), 0.0).r;',
+      '    let density = mix(filteredDensity, filteredDensity * 0.52 + detailDensity * 0.48, closeFactor);',
+      '    let threshold = 0.53 + 0.11 * sin(plane * 0.73);',
+      '    let aa = max(params.viewport.w * mix(3.8, 1.9, closeFactor), 0.008);',
+      '    let solid = smoothstep(threshold - aa, threshold + aa, density) * nearFade;',
+      '    let edge = smoothstep(threshold - aa, threshold + aa, density) - smoothstep(threshold + aa, threshold + aa * 3.2, density);',
+      '    let depthNorm = f32(i) / max(f32(planeCount) - 1.0, 1.0);',
+      '    var planeCol = planeColor(plane) * (1.0 - depthNorm * 0.44);',
+      '    planeCol = planeCol + vec3<f32>(0.08, 0.05, 0.14) * edge * (0.68 + energy * 0.14);',
+      '    color = mix(color, planeCol, solid * (1.0 - accum));',
+      '    accum = accum + solid * (1.0 - accum);',
+      '  }',
+      '  color = color * (1.0 - 0.12 * length(vec2<f32>(centered.x * aspect, centered.y)));',
+      '  return vec4<f32>(color, 1.0);',
+      '}'
+    ].join('\n');
+
+    return navigator.gpu.requestAdapter().then(function (adapter) {
+      if (!adapter) return null;
+      return adapter.requestDevice();
+    }).then(function (device) {
+      if (!device) return null;
+
+      var context = target.getContext('webgpu');
+      if (!context) return null;
+
+      context.configure({
+        device: device,
+        format: format,
+        alphaMode: 'premultiplied'
+      });
+
+      var atlasTexture = device.createTexture({
+        size: [sliceSize * atlasCols, sliceSize * atlasRows, 1],
+        format: 'rgba8unorm',
+        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING
+      });
+      var atlasView = atlasTexture.createView();
+      var sampler = device.createSampler({
+        addressModeU: 'clamp-to-edge',
+        addressModeV: 'clamp-to-edge',
+        magFilter: 'linear',
+        minFilter: 'linear'
+      });
+
+      var computeParamsBuffer = device.createBuffer({
+        size: computeParamsData.byteLength,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+      });
+      device.queue.writeBuffer(computeParamsBuffer, 0, computeParamsData);
+
+      var renderParamsBuffer = device.createBuffer({
+        size: renderParamsData.byteLength,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+      });
+
+      var computePipeline = device.createComputePipeline({
+        layout: 'auto',
+        compute: {
+          module: device.createShaderModule({ code: computeShader }),
+          entryPoint: 'main'
+        }
+      });
+      var renderPipeline = device.createRenderPipeline({
+        layout: 'auto',
+        vertex: {
+          module: device.createShaderModule({ code: renderShader }),
+          entryPoint: 'vsMain'
+        },
+        fragment: {
+          module: device.createShaderModule({ code: renderShader }),
+          entryPoint: 'fsMain',
+          targets: [{ format: format }]
+        },
+        primitive: {
+          topology: 'triangle-list'
+        }
+      });
+
+      var computeBindGroup = device.createBindGroup({
+        layout: computePipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: atlasView },
+          { binding: 1, resource: { buffer: computeParamsBuffer } }
+        ]
+      });
+      var renderBindGroup = device.createBindGroup({
+        layout: renderPipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: renderParamsBuffer } },
+          { binding: 1, resource: atlasView },
+          { binding: 2, resource: sampler }
+        ]
+      });
+
+      var bakeEncoder = device.createCommandEncoder();
+      var bakePass = bakeEncoder.beginComputePass();
+      bakePass.setPipeline(computePipeline);
+      bakePass.setBindGroup(0, computeBindGroup);
+      bakePass.dispatchWorkgroups(
+        Math.ceil((sliceSize * atlasCols) / 8),
+        Math.ceil((sliceSize * atlasRows) / 8),
+        1
+      );
+      bakePass.end();
+      device.queue.submit([bakeEncoder.finish()]);
+
+      return {
+        resize: function () {
+          if (!target.width || !target.height) return;
+          context.configure({
+            device: device,
+            format: format,
+            alphaMode: 'premultiplied'
+          });
+        },
+        render: function (state) {
+          renderParamsData[0] = state.width;
+          renderParamsData[1] = state.height;
+          renderParamsData[2] = state.aspect;
+          renderParamsData[3] = 1 / sliceSize;
+          renderParamsData[4] = state.cameraX;
+          renderParamsData[5] = state.cameraY;
+          renderParamsData[6] = state.cameraZ;
+          renderParamsData[7] = state.energy;
+          renderParamsData[8] = state.forwardX;
+          renderParamsData[9] = state.forwardY;
+          renderParamsData[10] = state.forwardZ;
+          renderParamsData[11] = spacing;
+          renderParamsData[12] = state.upX;
+          renderParamsData[13] = state.upY;
+          renderParamsData[14] = state.upZ;
+          renderParamsData[15] = planeCount;
+          renderParamsData[16] = atlasCols;
+          renderParamsData[17] = atlasRows;
+          renderParamsData[18] = sliceScale;
+          renderParamsData[19] = sliceCount;
+          device.queue.writeBuffer(renderParamsBuffer, 0, renderParamsData);
+
+          var encoder = device.createCommandEncoder();
+          var pass = encoder.beginRenderPass({
+            colorAttachments: [{
+              view: context.getCurrentTexture().createView(),
+              clearValue: { r: 0, g: 0, b: 0, a: 0 },
+              loadOp: 'clear',
+              storeOp: 'store'
+            }]
+          });
+          pass.setPipeline(renderPipeline);
+          pass.setBindGroup(0, renderBindGroup);
+          pass.draw(3, 1, 0, 0);
+          pass.end();
+          device.queue.submit([encoder.finish()]);
+        }
+      };
+    }).catch(function (err) {
+      console.warn('fx.js: WebGPU lava3 init failed', err);
+      return null;
+    });
+  }
+
+  function ensureGpuRenderer() {
+    if (gpuRenderer) return Promise.resolve(gpuRenderer);
+    if (gpuInitPromise) return gpuInitPromise;
+    gpuInitPromise = createLava3Renderer(gpuCanvas).then(function (renderer) {
+      gpuRenderer = renderer;
+      if (gpuRenderer && gpuCanvas) {
+        gpuRenderer.resize(gpuCanvas.width, gpuCanvas.height);
+      } else {
+        gpuInitPromise = null;
+      }
+      return gpuRenderer;
+    });
+    return gpuInitPromise;
+  }
+
+  function isWebGlMode(mode) {
+    return mode === 'lava' || mode === 'lava2';
+  }
+
+  var flameCanvas = document.getElementById('flame-canvas');
+  var knotCanvas = document.getElementById('knot-canvas');
+  var waveCanvas = document.getElementById('wave-canvas');
+
+  function showActiveCanvas(mode) {
+    if (canvas) canvas.classList.toggle('fx-active', isWebGlMode(mode));
+    if (gpuCanvas) gpuCanvas.classList.toggle('fx-active', mode === 'lava3');
+    if (flameCanvas) flameCanvas.classList.toggle('fx-active', mode === 'flame');
+    if (knotCanvas) knotCanvas.classList.toggle('fx-active', mode === 'knot');
+    if (waveCanvas) waveCanvas.classList.toggle('fx-active', mode === 'wave');
+    // pretext manages its own container visibility via pretextStart/pretextStop
+  }
 
   // ── Render loop ──
   function render() {
-    if (!activeMode || !programs[activeMode]) {
+    if (!activeMode || activeMode === 'pretext' || activeMode === 'flame' || activeMode === 'knot' || activeMode === 'wave') {
       animFrame = null;
       return;
     }
 
-    var prog = programs[activeMode];
     var now = Date.now();
     var t = (now - startTime) / 1000.0;
     var dt = Math.min(0.05, (now - lastFrameTime) / 1000.0 || 0.016);
-    var dpr = window.devicePixelRatio || 1;
     lastFrameTime = now;
 
-    // Pointer position steers the trajectory. Forward motion is constant with extra push on press.
+    // Pointer position steers the trajectory. Lava3 uses a persistent heading, so center acts as a dead zone.
+    var isLava3 = activeMode === 'lava3';
     var pointerEase = activeMode === 'lava2' ? 0.010 : 0.014;
     var velocityEase = activeMode === 'lava2' ? 0.42 : 0.85;
     var lateralX = activeMode === 'lava2' ? 0.065 : 0.18;
@@ -420,6 +855,54 @@
     var desiredVX = nx * lateralX;
     var desiredVY = ny * lateralY;
     var desiredVZ = forwardBase + (pointerDown ? pressBoost : 0.0) + pointerEnergy * energyBoost;
+    if (isLava3) {
+      var stickX = nx * 2.0;
+      var stickY = ny * 2.0;
+      var deadZone = 0.12;
+      var stickMag = Math.sqrt(stickX * stickX + stickY * stickY);
+      var steerX = 0;
+      var steerY = 0;
+      if (stickMag > deadZone) {
+        var steerMag = Math.min(1, (stickMag - deadZone) / (1 - deadZone));
+        steerX = (stickX / stickMag) * steerMag;
+        steerY = (stickY / stickMag) * steerMag;
+      }
+      var targetForward = normalize3(
+        steerX * 0.58,
+        steerY * 0.42,
+        1.0,
+        [0, 0, 1]
+      );
+      var forward = normalize3(
+        viewForwardX + (targetForward[0] - viewForwardX) * Math.min(1, dt * 3.2),
+        viewForwardY + (targetForward[1] - viewForwardY) * Math.min(1, dt * 3.2),
+        viewForwardZ + (targetForward[2] - viewForwardZ) * Math.min(1, dt * 3.2),
+        [0, 0, 1]
+      );
+      var worldUp = [0, 1, 0];
+      var rightVec = cross3(worldUp[0], worldUp[1], worldUp[2], forward[0], forward[1], forward[2]);
+      var right = normalize3(rightVec[0], rightVec[1], rightVec[2], [1, 0, 0]);
+      var horizonUpVec = cross3(forward[0], forward[1], forward[2], right[0], right[1], right[2]);
+      var horizonUp = normalize3(horizonUpVec[0], horizonUpVec[1], horizonUpVec[2], worldUp);
+      var horizonRightVec = cross3(horizonUp[0], horizonUp[1], horizonUp[2], forward[0], forward[1], forward[2]);
+      var horizonRight = normalize3(horizonRightVec[0], horizonRightVec[1], horizonRightVec[2], right);
+      bankAngle += ((-steerX * 0.42) - bankAngle) * Math.min(1, dt * 2.4);
+      var up = normalize3(
+        horizonUp[0] * Math.cos(bankAngle) + horizonRight[0] * Math.sin(bankAngle),
+        horizonUp[1] * Math.cos(bankAngle) + horizonRight[1] * Math.sin(bankAngle),
+        horizonUp[2] * Math.cos(bankAngle) + horizonRight[2] * Math.sin(bankAngle),
+        horizonUp
+      );
+      viewForwardX = forward[0];
+      viewForwardY = forward[1];
+      viewForwardZ = forward[2];
+      viewUpX = up[0];
+      viewUpY = up[1];
+      viewUpZ = up[2];
+      desiredVX = forward[0] * 0.18 + steerX * 0.02;
+      desiredVY = forward[1] * 0.15 + steerY * 0.02;
+      desiredVZ = Math.max(0.46, forward[2]) * 0.62 + (pointerDown ? 0.05 : 0.0) + pointerEnergy * 0.035;
+    }
     travelVX += (desiredVX - travelVX) * Math.min(1, dt * velocityEase);
     travelVY += (desiredVY - travelVY) * Math.min(1, dt * velocityEase);
     travelVZ += (desiredVZ - travelVZ) * Math.min(1, dt * 0.75);
@@ -427,6 +910,37 @@
     travelY += travelVY * dt;
     travelZ += travelVZ * dt;
 
+    if (activeMode === 'lava3') {
+      if (gpuRenderer && gpuCanvas && gpuCanvas.width && gpuCanvas.height) {
+        var gpuAspect = gpuCanvas.width / gpuCanvas.height;
+        gpuRenderer.render({
+          width: gpuCanvas.width,
+          height: gpuCanvas.height,
+          aspect: gpuAspect,
+          time: t,
+          cameraX: travelX * 0.92,
+          cameraY: travelY * 0.92,
+          cameraZ: travelZ * 1.08,
+          forwardX: viewForwardX,
+          forwardY: viewForwardY,
+          forwardZ: viewForwardZ,
+          upX: viewUpX,
+          upY: viewUpY,
+          upZ: viewUpZ,
+          energy: clamp(pointerEnergy, 0.0, 1.0)
+        });
+      }
+      animFrame = requestAnimationFrame(render);
+      return;
+    }
+
+    if (!programs[activeMode]) {
+      animFrame = null;
+      return;
+    }
+
+    var prog = programs[activeMode];
+    var dpr = window.devicePixelRatio || 1;
     gl.useProgram(prog.program);
     gl.bindBuffer(gl.ARRAY_BUFFER, quad);
     gl.enableVertexAttribArray(prog.a_pos);
@@ -452,8 +966,82 @@
   }
 
   function activate(mode) {
+    // Stop current custom mode if switching away
+    if (activeMode === 'pretext' && mode !== 'pretext' && window.pretextStop) {
+      window.pretextStop();
+    }
+    if (activeMode === 'flame' && mode !== 'flame' && window.flameStop) {
+      window.flameStop();
+    }
+    if (activeMode === 'knot' && mode !== 'knot' && window.knotStop) {
+      window.knotStop();
+    }
+    if (activeMode === 'wave' && mode !== 'wave' && window.waveStop) {
+      window.waveStop();
+    }
+
+    if (mode === 'knot') {
+      activeMode = mode;
+      showActiveCanvas(mode);
+      document.body.classList.add('lava-active');
+      if (siteName) siteName.classList.add('is-active');
+      setHash(mode);
+      if (window.knotStart) window.knotStart();
+      return;
+    }
+
+    if (mode === 'wave') {
+      activeMode = mode;
+      showActiveCanvas(mode);
+      document.body.classList.add('lava-active');
+      if (siteName) siteName.classList.add('is-active');
+      setHash(mode);
+      if (window.waveStart) window.waveStart();
+      return;
+    }
+
+    if (mode === 'flame') {
+      activeMode = mode;
+      showActiveCanvas(mode);
+      document.body.classList.add('lava-active');
+      if (siteName) siteName.classList.add('is-active');
+      setHash(mode);
+      if (window.flameStart) window.flameStart();
+      return;
+    }
+
+    if (mode === 'pretext') {
+      activeMode = mode;
+      showActiveCanvas(mode);
+      document.body.classList.add('lava-active');
+      if (siteName) siteName.classList.add('is-active');
+      setHash(mode);
+      if (window.pretextStart) window.pretextStart();
+      return;
+    }
+
+    if (mode === 'lava3') {
+      if (!navigator.gpu || !gpuCanvas) {
+        console.warn('fx.js: WebGPU unavailable, falling back to lava2');
+        mode = 'lava2';
+      } else {
+        viewForwardX = 0;
+        viewForwardY = 0;
+        viewForwardZ = 1;
+        viewUpX = 0;
+        viewUpY = 1;
+        viewUpZ = 0;
+        bankAngle = 0;
+        ensureGpuRenderer().then(function (renderer) {
+          if (!renderer && activeMode === 'lava3') {
+            console.warn('fx.js: lava3 init failed, falling back to lava2');
+            activate('lava2');
+          }
+        });
+      }
+    }
     activeMode = mode;
-    canvas.classList.add('fx-active');
+    showActiveCanvas(mode);
     document.body.classList.add('lava-active');
     if (siteName) siteName.classList.add('is-active');
     setHash(mode);
@@ -461,8 +1049,11 @@
   }
 
   function deactivate(elmIndex) {
+    if (activeMode === 'pretext' && window.pretextStop) window.pretextStop();
+    if (activeMode === 'flame' && window.flameStop) window.flameStop();
+    if (activeMode === 'knot' && window.knotStop) window.knotStop();
     activeMode = null;
-    canvas.classList.remove('fx-active');
+    showActiveCanvas(null);
     document.body.classList.remove('lava-active');
     if (siteName) siteName.classList.remove('is-active');
     if (animFrame) {
@@ -511,7 +1102,58 @@
       activate('lava2');
     });
     bgDiv.appendChild(lava2Btn);
-    console.log('fx.js: lava button injected');
+
+    var lava3Btn = document.createElement('button');
+    lava3Btn.className = 'icon-button';
+    lava3Btn.title = 'Lava 3';
+    lava3Btn.innerHTML = '<img src="assets/lava3-icon.svg" alt="Lava 3">';
+    lava3Btn.addEventListener('mousedown', function (e) {
+      e.stopPropagation();
+      activate('lava3');
+    });
+    bgDiv.appendChild(lava3Btn);
+
+    var pretextBtn = document.createElement('button');
+    pretextBtn.className = 'icon-button';
+    pretextBtn.title = 'Pretext';
+    pretextBtn.innerHTML = '<img src="assets/pretext-icon.svg" alt="Pretext">';
+    pretextBtn.addEventListener('mousedown', function (e) {
+      e.stopPropagation();
+      activate('pretext');
+    });
+    bgDiv.appendChild(pretextBtn);
+
+    var flameBtn = document.createElement('button');
+    flameBtn.className = 'icon-button';
+    flameBtn.title = 'Flame';
+    flameBtn.innerHTML = '<img src="assets/flame-icon.svg" alt="Flame">';
+    flameBtn.addEventListener('mousedown', function (e) {
+      e.stopPropagation();
+      activate('flame');
+    });
+    bgDiv.appendChild(flameBtn);
+
+    var knotBtn = document.createElement('button');
+    knotBtn.className = 'icon-button';
+    knotBtn.title = 'Reflow Knot';
+    knotBtn.innerHTML = '<img src="assets/knot-icon.svg" alt="Knot">';
+    knotBtn.addEventListener('mousedown', function (e) {
+      e.stopPropagation();
+      activate('knot');
+    });
+    bgDiv.appendChild(knotBtn);
+
+    var waveBtn = document.createElement('button');
+    waveBtn.className = 'icon-button';
+    waveBtn.title = 'Wave';
+    waveBtn.innerHTML = '<img src="assets/pyramid.png" alt="Wave" style="transform: rotate(180deg);">';
+    waveBtn.addEventListener('mousedown', function (e) {
+      e.stopPropagation();
+      activate('wave');
+    });
+    bgDiv.appendChild(waveBtn);
+
+    console.log('fx.js: all effect buttons injected');
 
     applyHash();
     return true;
@@ -520,7 +1162,7 @@
   function applyHash() {
     var hash = location.hash.replace('#', '');
     if (!hash) return;
-    if (hash === 'lava' || hash === 'lava2') {
+    if (hash === 'lava' || hash === 'lava2' || hash === 'lava3' || hash === 'pretext' || hash === 'flame' || hash === 'knot') {
       activate(hash);
     } else {
       var idx = MODE_NAMES.indexOf(hash);

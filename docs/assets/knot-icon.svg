@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <path d="M32 8 C18 8 10 20 16 30 C22 40 28 28 32 20 C36 28 42 40 48 30 C54 20 46 8 32 8Z" stroke="#cc88ff" stroke-width="2.5" fill="none"/>
+  <path d="M20 38 C24 48 40 48 44 38" stroke="#cc88ff" stroke-width="2" fill="none"/>
+  <path d="M26 44 C28 52 36 52 38 44" stroke="#8844dd" stroke-width="1.5" fill="none"/>
+  <text x="24" y="35" font-size="11" fill="#cc88ff" font-family="serif" font-weight="bold">3D</text>
+</svg>
