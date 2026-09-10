@@ -1,0 +1,12 @@
+{
+  "name": "physics-https-redirect",
+  "account_id": "1eb8ec2d2ed13e5ba2a0a228e2d02c56",
+  "compatibility_date": "2026-09-10",
+  "main": "./https-redirect.mjs",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [
+    { "pattern": "http://physics.nicholasbardy.com/*", "zone_name": "nicholasbardy.com" }
+  ],
+  "observability": { "enabled": true, "head_sampling_rate": 1 }
+}
