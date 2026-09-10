@@ -49,9 +49,15 @@ shared email list, with the visual explainers hosted separately. Nick confirmed
 The Substack publication recorded in `meta_project/projects/substack.md` is
 `commemorovindico385902.substack.com`. Its `/subscribe` page was verified live as
 “Subscribe to Nicholas Bardy”. **https://physics.nicholasbardy.com/subscribe**
-redirects to that signup page, using the same Substack list. Adding a visible
-signup link/form to article layouts and testing the subscription lifecycle
-remain pending. `blog.nicholasbardy.com` is
+redirects to that signup page, using the same Substack list. Visible signup
+forms were added September 10 in article source commit `5b5b208`:
+“Get new articles by email” appears on the homepage and below article titles.
+The native email form opens Substack with the address prefilled; Substack
+finishes the subscription. Desktop and mobile layout, empty/invalid email
+validation, and the address handoff were verified using a non-deliverable
+test address. No subscription was submitted on Substack, so confirmation
+email delivery and the complete subscription lifecycle remain untested.
+`blog.nicholasbardy.com` is
 intended for Substack; its custom-domain or redirect setup is still pending.
 
 No domain purchase or separate newsletter provider is needed for this setup.
