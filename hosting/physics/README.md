@@ -42,22 +42,18 @@ the old GitHub address. Use the command above to update the physics domain.
 
 ## Publishing and email
 
-The July Namesake discussion chose Substack for writing, distribution, and one
-shared email list, with the visual explainers hosted separately. Nick confirmed
-`physics.nicholasbardy.com` on September 10, 2026.
+Nick confirmed `physics.nicholasbardy.com` on September 10, 2026. On September
+11 he chose an owned Cloudflare Worker + D1 list for the visual explainers,
+replacing the Substack signup handoff. `/subscribe` now leads to the homepage
+signup box. The shared article template includes light-blue signup boxes at
+the top and bottom, and links to `/rss.xml`.
 
-The Substack publication recorded in `meta_project/projects/substack.md` is
-`commemorovindico385902.substack.com`. Its `/subscribe` page was verified live as
-“Subscribe to Nicholas Bardy”. **https://physics.nicholasbardy.com/subscribe**
-redirects to that signup page, using the same Substack list. Visible signup
-forms were added September 10 in article source commit `5b5b208`:
-“Get new articles by email” appears on the homepage and below article titles.
-The native email form opens Substack with the address prefilled; Substack
-finishes the subscription. Desktop and mobile layout, empty/invalid email
-validation, and the address handoff were verified using a non-deliverable
-test address. No subscription was submitted on Substack, so confirmation
-email delivery and the complete subscription lifecycle remain untested.
-`blog.nicholasbardy.com` is
-intended for Substack; its custom-domain or redirect setup is still pending.
+The collection API is
+`https://visual-explainers-newsletter.nicholasbardy.workers.dev`. Its Worker,
+D1 migration, tests, and operating notes live in the article repository under
+`workers/newsletter/` and `LAUNCH.md`. No existing Substack subscribers were
+imported and no announcement was sent. The endpoint collects subscriptions;
+email delivery and announcement campaigns remain separate work.
 
-No domain purchase or separate newsletter provider is needed for this setup.
+The broader Substack publication and proposed `blog.nicholasbardy.com` setup
+are unaffected by the visual explainers’ newsletter choice.
