@@ -3,7 +3,7 @@
   'use strict';
 
   // Only finished effects are reachable from the public site.
-  var PUBLISHED_EFFECTS = ['knot'];
+  var PUBLISHED_EFFECTS = [];
 
   // ── State ──
   var activeMode = null;        // null | 'lava' | 'lava2' | 'lava3' | 'pretext' | 'flame' | 'knot'
@@ -1097,17 +1097,6 @@
       });
     });
 
-    var knotBtn = document.createElement('button');
-    knotBtn.className = 'icon-button';
-    knotBtn.title = 'Knot';
-    knotBtn.setAttribute('aria-label', 'Knot');
-    knotBtn.innerHTML = '<img src="assets/knot-icon.svg" alt="Knot">';
-    knotBtn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      activate('knot');
-    });
-    bgDiv.appendChild(knotBtn);
-
     applyHash();
     return true;
   }
@@ -1117,7 +1106,7 @@
     if (!hash) return;
     if (PUBLISHED_EFFECTS.indexOf(hash) >= 0) {
       activate(hash);
-    } else if (['lava', 'lava2', 'lava3', 'pretext', 'flame', 'wave'].indexOf(hash) >= 0) {
+    } else if (['lava', 'lava2', 'lava3', 'pretext', 'flame', 'wave', 'knot'].indexOf(hash) >= 0) {
       // Retired and unfinished effects stay hidden, including old shared links.
       deactivate(0);
     } else {
