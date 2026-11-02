@@ -52,6 +52,9 @@
 	// Map touch to mouse
 	function touchHandler(event)
 	{
+	    // Native controls need their normal tap/click behavior.
+	    if (event.target.closest && event.target.closest('a, button, input, textarea, select, label')) return;
+
 	    var touches = event.changedTouches,
 	        first = touches[0],
 	        type = "";

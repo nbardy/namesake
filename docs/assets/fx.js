@@ -2,6 +2,9 @@
 (function () {
   'use strict';
 
+  // Only finished effects are reachable from the public site.
+  var PUBLISHED_EFFECTS = ['knot'];
+
   // ── State ──
   var activeMode = null;        // null | 'lava' | 'lava2' | 'lava3' | 'pretext' | 'flame' | 'knot'
   var mouseX = 0, mouseY = 0;   // raw pointer
@@ -31,7 +34,7 @@
   gpuCanvas = document.getElementById('fx-canvas-gpu');
   siteName = document.getElementById('site-name');
   if (!canvas && !gpuCanvas) { console.warn('fx.js: no effect canvas'); return; }
-  if (canvas) {
+  if (canvas && PUBLISHED_EFFECTS.some(isWebGlMode)) {
     gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
     if (!gl) console.warn('fx.js: no WebGL');
   }
@@ -966,6 +969,10 @@
   }
 
   function activate(mode) {
+    if (PUBLISHED_EFFECTS.indexOf(mode) < 0) {
+      deactivate(0);
+      return;
+    }
     // Stop current custom mode if switching away
     if (activeMode === 'pretext' && mode !== 'pretext' && window.pretextStop) {
       window.pretextStop();
@@ -1078,72 +1085,27 @@
     console.log('fx.js: wiring', buttons.length, 'Elm buttons');
 
     buttons.forEach(function (btn, i) {
+      var label = ['Drag', 'Perspective', 'Stars', 'Rainbow', 'Spinners'][i];
+      btn.title = label;
+      btn.setAttribute('aria-label', label);
+      btn.addEventListener('click', function (event) {
+        if (event.detail === 0) btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      });
       btn.addEventListener('mousedown', function () {
         deactivate(i);
       });
     });
 
-    var lava2Btn = document.createElement('button');
-    lava2Btn.className = 'icon-button';
-    lava2Btn.title = 'Lava 2';
-    lava2Btn.innerHTML = '<img src="assets/overlap.png" alt="Lava 2">';
-    lava2Btn.addEventListener('mousedown', function (e) {
-      e.stopPropagation();
-      activate('lava2');
-    });
-    bgDiv.appendChild(lava2Btn);
-
-    var lava3Btn = document.createElement('button');
-    lava3Btn.className = 'icon-button';
-    lava3Btn.title = 'Lava 3';
-    lava3Btn.innerHTML = '<img src="assets/lava3-icon.svg" alt="Lava 3">';
-    lava3Btn.addEventListener('mousedown', function (e) {
-      e.stopPropagation();
-      activate('lava3');
-    });
-    bgDiv.appendChild(lava3Btn);
-
-    var pretextBtn = document.createElement('button');
-    pretextBtn.className = 'icon-button';
-    pretextBtn.title = 'Pretext';
-    pretextBtn.innerHTML = '<img src="assets/pretext-icon.svg" alt="Pretext">';
-    pretextBtn.addEventListener('mousedown', function (e) {
-      e.stopPropagation();
-      activate('pretext');
-    });
-    bgDiv.appendChild(pretextBtn);
-
-    var flameBtn = document.createElement('button');
-    flameBtn.className = 'icon-button';
-    flameBtn.title = 'Flame';
-    flameBtn.innerHTML = '<img src="assets/flame-icon.svg" alt="Flame">';
-    flameBtn.addEventListener('mousedown', function (e) {
-      e.stopPropagation();
-      activate('flame');
-    });
-    bgDiv.appendChild(flameBtn);
-
     var knotBtn = document.createElement('button');
     knotBtn.className = 'icon-button';
-    knotBtn.title = 'Reflow Knot';
+    knotBtn.title = 'Knot';
+    knotBtn.setAttribute('aria-label', 'Knot');
     knotBtn.innerHTML = '<img src="assets/knot-icon.svg" alt="Knot">';
-    knotBtn.addEventListener('mousedown', function (e) {
+    knotBtn.addEventListener('click', function (e) {
       e.stopPropagation();
       activate('knot');
     });
     bgDiv.appendChild(knotBtn);
-
-    var waveBtn = document.createElement('button');
-    waveBtn.className = 'icon-button';
-    waveBtn.title = 'Wave';
-    waveBtn.innerHTML = '<img src="assets/pyramid.png" alt="Wave" style="transform: rotate(180deg);">';
-    waveBtn.addEventListener('mousedown', function (e) {
-      e.stopPropagation();
-      activate('wave');
-    });
-    bgDiv.appendChild(waveBtn);
-
-    console.log('fx.js: all effect buttons injected');
 
     applyHash();
     return true;
@@ -1152,11 +1114,11 @@
   function applyHash() {
     var hash = location.hash.replace('#', '');
     if (!hash) return;
-    if (hash === 'lava') {
-      // Retired effect: old links return to the default visualization.
-      deactivate(0);
-    } else if (hash === 'lava2' || hash === 'lava3' || hash === 'pretext' || hash === 'flame' || hash === 'knot') {
+    if (PUBLISHED_EFFECTS.indexOf(hash) >= 0) {
       activate(hash);
+    } else if (['lava', 'lava2', 'lava3', 'pretext', 'flame', 'wave'].indexOf(hash) >= 0) {
+      // Retired and unfinished effects stay hidden, including old shared links.
+      deactivate(0);
     } else {
       var idx = MODE_NAMES.indexOf(hash);
       if (idx >= 0) {
@@ -1184,5 +1146,6 @@
     }, 50);
   }
 
+  window.addEventListener('hashchange', applyHash);
   waitForElm();
 })();
