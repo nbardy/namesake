@@ -121,7 +121,7 @@
       result.boundarySlope = max(result.boundarySlope, abs(base.dx - detail.dx), abs(base.dy - detail.dy));
     }
     [['period-error','periodic'],['edge-error','boundaryHeight'],['slope-error','boundarySlope'],['gauge-error','gauge']].forEach(function (item) { document.getElementById(item[0]).textContent = result[item[1]] < 1e-14 ? '< 10⁻¹⁴' : result[item[1]].toExponential(1); });
-    document.getElementById('checks-note').textContent = '240 sample points and 294 shared-edge points, including negative cells. Analytic-gradient error versus central differences: ' + result.gradient.toExponential(1) + '. Sixfold field error at t=0: ' + result.rotation.toExponential(1) + '. B changes by RMS ' + result.detailShiftRms.toFixed(4) + ' after A’s repeat shift. These are numerical checks of the formulas, not proof of aperiodicity or visual quality.';
+    document.getElementById('checks-note').textContent = 'CPU field checks: 240 sample points and 294 shared-edge points, including negative cells. Analytic-gradient error versus central differences: ' + result.gradient.toExponential(1) + '. Sixfold field error at t=0: ' + result.rotation.toExponential(1) + '. B changes by RMS ' + result.detailShiftRms.toFixed(4) + ' after A’s repeat shift. These are numerical checks of the formulas, not proof of aperiodicity or visual quality.';
     window.oceanLabChecks = result;
   }
   window.oceanLab = { pause: function () { playing = false; schedule(); }, play: function () { playing = true; schedule(); }, setTime: function (value) { time = value; previous = 0; draw(); }, setOptions: updateOptions, get time() { return time; }, get options() { return Object.assign({}, options); }, renderers: renderers };
