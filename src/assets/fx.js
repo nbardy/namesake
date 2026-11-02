@@ -1066,7 +1066,7 @@
     }
   }
 
-  // ── Wire up Elm buttons + inject lava button ──
+  // ── Wire up Elm buttons + experimental effects ──
   function wireButtons() {
     var bgDiv = document.getElementById('background-buttons');
     if (!bgDiv) return false;
@@ -1083,16 +1083,6 @@
         deactivate(i);
       });
     });
-
-    var lavaBtn = document.createElement('button');
-    lavaBtn.className = 'icon-button';
-    lavaBtn.title = 'Lava';
-    lavaBtn.innerHTML = '<img src="assets/lava-icon.svg" alt="Lava">';
-    lavaBtn.addEventListener('mousedown', function (e) {
-      e.stopPropagation();
-      activate('lava');
-    });
-    bgDiv.appendChild(lavaBtn);
 
     var lava2Btn = document.createElement('button');
     lava2Btn.className = 'icon-button';
@@ -1163,7 +1153,10 @@
   function applyHash() {
     var hash = location.hash.replace('#', '');
     if (!hash) return;
-    if (hash === 'lava' || hash === 'lava2' || hash === 'lava3' || hash === 'pretext' || hash === 'flame' || hash === 'knot') {
+    if (hash === 'lava') {
+      // Retired effect: old links return to the default visualization.
+      deactivate(0);
+    } else if (hash === 'lava2' || hash === 'lava3' || hash === 'pretext' || hash === 'flame' || hash === 'knot') {
       activate(hash);
     } else {
       var idx = MODE_NAMES.indexOf(hash);
