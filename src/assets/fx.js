@@ -1147,6 +1147,12 @@
     }, 50);
   }
 
+  window.addEventListener('knoterror', function () {
+    if (activeMode !== 'knot') return;
+    var firstButton = document.querySelector('#background-buttons button');
+    if (firstButton) firstButton.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    else deactivate(0);
+  });
   window.addEventListener('hashchange', applyHash);
   waitForElm();
 })();

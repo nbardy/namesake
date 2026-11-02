@@ -1,177 +1,142 @@
-// reflow-knot.js — Three.js torus knot with dynamic text reflow texture
-// Text is rendered to a hidden 2D canvas, mapped onto a TorusKnotGeometry.
+// reflow-knot.js — a slowly turning, satin-violet trefoil.
 // Activated/deactivated by fx.js as the 'knot' mode.
 (function () {
   'use strict';
 
-  var threeCanvas = null;   // WebGL canvas
+  var threeCanvas = null;
   var threeRenderer = null;
   var threeScene = null;
   var threeCamera = null;
   var torusKnot = null;
-  var textCanvas = null;    // hidden 2D canvas for text reflow
-  var textCtx = null;
-  var texture = null;
   var animFrame = null;
-  var startTime = 0;
+  var active = false;
+  var loading = false;
+  var elapsed = 0;
+  var previousTime = 0;
+  var radius = 20;
+  var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
-  var ELVISH = 'Ash nazg durbatuluk ash nazg gimbatul ash nazg thrakatuluk agh burzum-ishi krimpatul ';
-  var LOREM = 'Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua Ut enim ad minim veniam quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat ';
-  var TEXT_CONTENT = '';
-  while (TEXT_CONTENT.length < 2000) TEXT_CONTENT += ELVISH + LOREM;
-
-  // Pre-load font
-  if (document.fonts) {
-    var ff = new FontFace('Elven Common Speak', "url('assets/fonts/Elvencommonspeak-0WXz.ttf')");
-    ff.load().then(function (f) { document.fonts.add(f); }).catch(function () {});
-  }
-
-  // ── Wait for Three.js to load ──
   function waitForThree(cb) {
     if (window.THREE) { cb(); return; }
+    if (loading) return;
+    loading = true;
     var script = document.createElement('script');
     script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
-    script.onload = cb;
-    script.onerror = function () { console.warn('reflow-knot: Three.js failed to load'); };
+    script.onload = function () { loading = false; cb(); };
+    script.onerror = function () {
+      loading = false;
+      console.warn('Knot could not load its renderer.');
+      if (active) window.dispatchEvent(new Event('knoterror'));
+    };
     document.head.appendChild(script);
   }
 
-  // ── Build the hidden text reflow canvas ──
-  function buildTextCanvas() {
-    textCanvas = document.createElement('canvas');
-    textCanvas.width = 512;
-    textCanvas.height = 1024;
-    textCtx = textCanvas.getContext('2d');
-    reflowText();
+  // Fit the entire turning silhouette using the narrower field of view.
+  function resize() {
+    if (!threeRenderer || !threeCamera) return;
+    var width = window.innerWidth;
+    var height = window.innerHeight;
+    threeCamera.aspect = width / height;
+    var verticalFov = threeCamera.fov * Math.PI / 180;
+    var horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * threeCamera.aspect);
+    var fieldOfView = Math.min(verticalFov, horizontalFov);
+    threeCamera.position.z = radius * 1.16 / Math.sin(fieldOfView / 2);
+    threeCamera.far = Math.max(200, threeCamera.position.z + radius * 3);
+    threeCamera.updateProjectionMatrix();
+    // A bounded backing store keeps high-density phones from rendering 9x pixels.
+    threeRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+    threeRenderer.setSize(width, height);
   }
 
-  function reflowText() {
-    var w = textCanvas.width, h = textCanvas.height;
-    textCtx.fillStyle = '#000000';
-    textCtx.fillRect(0, 0, w, h);
-
-    textCtx.fillStyle = '#cc88ff'; // Purple-ish Elvish text
-    textCtx.font = 'bold 28px "Elven Common Speak", monospace';
-    textCtx.textAlign = 'left';
-    textCtx.textBaseline = 'top';
-
-    var words = TEXT_CONTENT.split(' ');
-    var line = '';
-    var y = 16;
-    var lineHeight = 36;
-    var margin = 16;
-
-    for (var i = 0; i < words.length; i++) {
-      var testLine = line + words[i] + ' ';
-      var metrics = textCtx.measureText(testLine);
-      if (metrics.width > (w - margin * 2) && i > 0) {
-        textCtx.fillText(line, margin, y);
-        line = words[i] + ' ';
-        y += lineHeight;
-        if (y > h - lineHeight) break; // filled the canvas
-      } else {
-        line = testLine;
-      }
-    }
-    textCtx.fillText(line, margin, y);
-
-    // Tile vertically to fill
-    var blockH = y + lineHeight + 16;
-    var cy = blockH;
-    while (cy < h) {
-      textCtx.drawImage(textCanvas, 0, 0, w, blockH, 0, cy, w, blockH);
-      cy += blockH;
-    }
-  }
-
-  // ── Build Three.js scene ──
   function buildScene() {
     var THREE = window.THREE;
-
     threeCanvas = document.getElementById('knot-canvas');
     if (!threeCanvas) return;
 
-    threeRenderer = new THREE.WebGLRenderer({
-      canvas: threeCanvas,
-      antialias: true,
-      alpha: true
-    });
-    threeRenderer.setPixelRatio(window.devicePixelRatio || 1);
-    threeRenderer.setSize(window.innerWidth, window.innerHeight);
+    try {
+      threeRenderer = new THREE.WebGLRenderer({
+        canvas: threeCanvas,
+        antialias: true,
+        alpha: false,
+        powerPreference: 'low-power'
+      });
+    } catch (error) {
+      console.warn('Knot could not start WebGL.');
+      if (active) window.dispatchEvent(new Event('knoterror'));
+      return;
+    }
     threeRenderer.setClearColor(0x050505, 1);
+    threeRenderer.outputEncoding = THREE.sRGBEncoding;
+    threeRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+    threeRenderer.toneMappingExposure = 1.1;
 
     threeScene = new THREE.Scene();
+    threeCamera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
 
-    threeCamera = new THREE.PerspectiveCamera(
-      60, window.innerWidth / window.innerHeight, 0.1, 1000
-    );
-    threeCamera.position.z = 40;
+    // Broad lavender key, restrained blue fill, and a rear violet rim.
+    // The untextured surface makes the over/under crossings easy to read.
+    threeScene.add(new THREE.AmbientLight(0x8d92c9, 0.24));
+    var key = new THREE.DirectionalLight(0xe5d9ff, 1.75);
+    key.position.set(-18, 24, 30);
+    threeScene.add(key);
+    var fill = new THREE.DirectionalLight(0x658aff, 0.55);
+    fill.position.set(20, -12, 12);
+    threeScene.add(fill);
+    var rim = new THREE.DirectionalLight(0xa36bff, 1.6);
+    rim.position.set(10, 8, -20);
+    threeScene.add(rim);
 
-    // Lighting
-    var ambient = new THREE.AmbientLight(0xffffff, 0.5);
-    threeScene.add(ambient);
-
-    var point1 = new THREE.PointLight(0xcc88ff, 1.2); // purple
-    point1.position.set(20, 20, 30);
-    threeScene.add(point1);
-
-    var point2 = new THREE.PointLight(0x4488ff, 0.8); // blue accent
-    point2.position.set(-15, -10, 20);
-    threeScene.add(point2);
-
-    // Text texture
-    buildTextCanvas();
-    texture = new THREE.CanvasTexture(textCanvas);
-    texture.wrapS = THREE.RepeatWrapping;
-    texture.wrapT = THREE.RepeatWrapping;
-    texture.magFilter = THREE.LinearFilter;
-    texture.minFilter = THREE.LinearMipmapLinearFilter;
-
-    var material = new THREE.MeshStandardMaterial({
-      map: texture,
-      roughness: 0.25,
-      metalness: 0.85,
-      emissive: new THREE.Color(0x220044),
-      emissiveIntensity: 0.15
+    var material = new THREE.MeshPhysicalMaterial({
+      color: new THREE.Color(0x6433b8).convertSRGBToLinear(),
+      roughness: 0.27,
+      metalness: 0.5,
+      clearcoat: 0.6,
+      clearcoatRoughness: 0.25
     });
-
-    var geometry = new THREE.TorusKnotGeometry(12, 3, 200, 32);
+    var geometry = new THREE.TorusKnotGeometry(12, 2.5, 320, 40);
+    geometry.computeBoundingSphere();
+    radius = geometry.boundingSphere.radius;
     torusKnot = new THREE.Mesh(geometry, material);
+    torusKnot.rotation.set(0.3, 0.35, 0.15);
     threeScene.add(torusKnot);
+    resize();
   }
 
-  // ── Render loop ──
-  function render() {
-    if (!threeRenderer || !torusKnot) { animFrame = null; return; }
-
-    var t = (Date.now() - startTime) / 1000;
-
-    // Slow tumble
-    torusKnot.rotation.x += 0.003;
-    torusKnot.rotation.y += 0.004;
-
-    // Scroll texture — ticker tape effect
-    texture.offset.x -= 0.003;
-
+  function render(time) {
+    animFrame = null;
+    if (!active || !threeRenderer || !torusKnot) return;
+    if (previousTime) elapsed += Math.min((time - previousTime) / 1000, 0.05);
+    previousTime = time;
+    if (!reducedMotion.matches) {
+      torusKnot.rotation.x = 0.3 + Math.sin(elapsed * 0.12) * 0.2;
+      torusKnot.rotation.y = 0.35 + elapsed * 0.11;
+      torusKnot.rotation.z = 0.15 + Math.sin(elapsed * 0.08) * 0.12;
+    }
     threeRenderer.render(threeScene, threeCamera);
-    animFrame = requestAnimationFrame(render);
+    if (!reducedMotion.matches) animFrame = requestAnimationFrame(render);
   }
 
-  // ── Public API ──
+  function startRendering() {
+    if (!active) return;
+    if (!threeRenderer) buildScene();
+    if (!threeRenderer) return;
+    resize();
+    threeCanvas.style.opacity = '1';
+    threeCanvas.classList.add('fx-active');
+    previousTime = 0;
+    if (!animFrame) animFrame = requestAnimationFrame(render);
+  }
+
   window.knotStart = function () {
-    waitForThree(function () {
-      if (!threeRenderer) buildScene();
-      if (threeCanvas) {
-        threeCanvas.style.opacity = '1';
-        threeCanvas.classList.add('fx-active');
-      }
-      startTime = Date.now();
-      if (!animFrame) animFrame = requestAnimationFrame(render);
-    });
+    active = true;
+    waitForThree(startRendering);
   };
 
   window.knotStop = function () {
-    if (animFrame) { cancelAnimationFrame(animFrame); animFrame = null; }
+    active = false;
+    if (animFrame) cancelAnimationFrame(animFrame);
+    animFrame = null;
+    previousTime = 0;
     if (threeCanvas) {
       threeCanvas.style.opacity = '0';
       threeCanvas.classList.remove('fx-active');
@@ -179,14 +144,25 @@
   };
 
   window.knotResize = function () {
-    if (threeRenderer && threeCamera) {
-      threeCamera.aspect = window.innerWidth / window.innerHeight;
-      threeCamera.updateProjectionMatrix();
-      threeRenderer.setSize(window.innerWidth, window.innerHeight);
+    resize();
+    if (active && reducedMotion.matches && threeRenderer) {
+      threeRenderer.render(threeScene, threeCamera);
     }
   };
 
   window.addEventListener('resize', function () {
-    if (animFrame) window.knotResize();
+    if (active) window.knotResize();
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+      if (animFrame) cancelAnimationFrame(animFrame);
+      animFrame = null;
+      previousTime = 0;
+    } else if (active) {
+      startRendering();
+    }
+  });
+  reducedMotion.addEventListener('change', function () {
+    if (active) startRendering();
   });
 })();

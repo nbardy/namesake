@@ -242,13 +242,14 @@ body.lava-active > div:not([id]) > div:first-child {
    backdrop-filter works over canvas content */
 #overlay-glass {
   position: relative;
-  width: min(640px, 90vw);
+  box-sizing: border-box;
+  width: min(720px, calc(100vw - 32px));
   max-height: 80vh;
   overflow-y: auto;
   padding: 48px 40px 40px;
   border-radius: 16px;
   /* frosted glass: semi-transparent white + blur of whatever is behind */
-  background: rgba(255, 255, 255, 0.25);
+  background: rgba(20, 20, 30, 0.92);
   -webkit-backdrop-filter: blur(24px) saturate(1.4);
   backdrop-filter: blur(24px) saturate(1.4);
   border: 1px solid rgba(255, 255, 255, 0.35);
@@ -257,6 +258,13 @@ body.lava-active > div:not([id]) > div:first-child {
     inset 0 0 0 1px rgba(255, 255, 255, 0.1);
   color: #fff;
   font-family: 'Lato', sans-serif;
+}
+
+@media (max-width: 600px) {
+  #overlay-glass {
+    padding: 48px 20px 24px;
+    max-height: calc(100dvh - 32px);
+  }
 }
 
 #overlay-glass h1 {
@@ -321,6 +329,7 @@ body.lava-active > div:not([id]) > div:first-child {
 
 .links-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 16px;
   margin-top: 1.2em;
 }
@@ -344,7 +353,7 @@ body.lava-active > div:not([id]) > div:first-child {
 
 .project-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
   gap: 16px;
 }
 

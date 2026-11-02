@@ -7,7 +7,7 @@ require('./index.html');
 function touchHandler(event)
 {
     // Native controls need their normal tap/click behavior.
-    if (event.target.closest && event.target.closest('a, button, input, textarea, select, label')) return;
+    if (event.target.closest && event.target.closest('a, button, input, textarea, select, label, #spa-overlay')) return;
 
     var touches = event.changedTouches,
         first = touches[0],
