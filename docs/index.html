@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Nicholas Bardy</title>
-    <link rel="stylesheet" type="text/css" href="assets/style.css">
+    <link rel="stylesheet" type="text/css" href="assets/style.css?v=physics-20261103">
     <link href="https://fonts.googleapis.com/css?family=Permanent+Marker|Lato" rel="stylesheet">
     </link>
   </head>
@@ -15,7 +15,8 @@
     <canvas id="fx-canvas"></canvas>
 
     <!-- SPA Nav + Overlay system (mounted on top of Elm canvas) -->
-    <nav id="spa-nav">
+    <nav id="spa-nav" aria-label="Main navigation">
+      <a class="nav-btn nav-link" href="https://physics.nicholasbardy.com/">Physics</a>
       <button class="nav-btn" data-panel="about">About</button>
       <button class="nav-btn" data-panel="projects">Projects</button>
     </nav>
@@ -43,6 +44,7 @@
         music, language, machine learning, and whatever else catches my attention.
       </p>
       <div class="links-row">
+        <a href="https://physics.nicholasbardy.com/">Physics &amp; visual explainers</a>
         <a href="http://lambdafunk.com">Blog</a>
         <a href="https://github.com/nbardy">GitHub</a>
       </div>
@@ -51,6 +53,10 @@
     <template id="tpl-projects">
       <h1>Projects</h1>
       <div class="project-grid">
+        <a class="project-card" href="https://physics.nicholasbardy.com/">
+          <h2>Physics &amp; Visual Explainers</h2>
+          <p>Interactive lessons on fluids, light, gravity, and thermodynamic computing. Change the controls and see the equations at work.</p>
+        </a>
         <a class="project-card" href="http://nbardy.github.io/soundjam">
           <h2>SoundJam</h2>
           <p>Music visualizer — real-time audio reactive graphics in the browser.</p>
@@ -93,7 +99,7 @@
         history.replaceState(null, '', location.pathname);
       }
 
-      document.querySelectorAll('.nav-btn').forEach(function(btn) {
+      document.querySelectorAll('[data-panel]').forEach(function(btn) {
         btn.addEventListener('click', function(e) {
           e.stopPropagation();
           openPanel(btn.dataset.panel);
