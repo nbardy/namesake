@@ -249,7 +249,7 @@
     }
   }
 
-  // ── Wire up Elm buttons + inject lava button ──
+  // ── Wire up the published Elm effects ──
   // Elm renders asynchronously, so we poll until #background-buttons has children
   function wireButtons() {
     var bgDiv = document.getElementById('background-buttons');
@@ -270,17 +270,6 @@
       });
     });
 
-    // Inject lava lamp button — uses same .icon-button class as Elm buttons
-    var lavaBtn = document.createElement('button');
-    lavaBtn.className = 'icon-button';
-    lavaBtn.innerHTML = '<img src="assets/lava-icon.svg" alt="Lava">';
-    lavaBtn.addEventListener('mousedown', function (e) {
-      e.stopPropagation();
-      activate('lava');
-    });
-    bgDiv.appendChild(lavaBtn);
-    console.log('fx.js: lava button injected');
-
     // Route from URL hash on load
     applyHash();
 
@@ -292,7 +281,8 @@
     var hash = location.hash.replace('#', '');
     if (!hash) return;
     if (hash === 'lava') {
-      activate('lava');
+      // Retired effect: old links return to the default visualization.
+      deactivate(0);
     } else {
       // For Elm modes, simulate clicking the right button
       var idx = MODE_NAMES.indexOf(hash);
