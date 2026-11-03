@@ -18,15 +18,22 @@
 <label>Curl <input id="curl" type="range" min="0" max="10" step="0.2" value="5.4"><output id="curl-value">5.4</output></label>
 <label>Scale <input id="scale" type="range" min="0.55" max="1.4" step="0.05" value="0.7"><output id="scale-value">0.70</output></label>
 <label>Detail <input id="detail" type="range" min="0.3" max="1.5" step="0.1" value="1"><output id="detail-value">1.0</output></label>
+<label>Tile variation <input id="tileVariation" type="range" min="0" max="1" step="0.05" value="0.65"><output id="tileVariation-value">0.65</output></label>
+<label><input id="seams" type="checkbox" checked> Tile edges</label>
 <label><input id="structure" type="checkbox"> Shapes only</label></div></div>
-<div class="caption"><p id="caption">A shared ocean field bends through interlocking aperiodic tiles. Switch to Curved tiles or Shapes only to inspect the geometry beneath the foam.</p><span>Static study · homepage opening unchanged</span></div>
+<div class="caption"><p id="caption">One ocean flows through the whole pattern. Thin seams reveal the interlocking tiles; four texture families give neighboring tiles distinct fine detail. Turn Tile variation down to compare with the shared ocean alone.</p><span>Opening visual · <a href="/">see it on the site ↗</a></span></div>
 <div class="essay">
 <h2>A tiling first. An ocean second.</h2>
 <p class="lead">The starting point is an Ammann–Beenker tiling: squares and 45° rhombi with eightfold order and no repeating translation. Its geometry becomes the wave shapes, rather than a grid placed over a water effect.</p>
 <div class="principles">
 <article><span class="step">01 / STRUCTURE</span><h3>Four dimensions → two</h3><p>Integer points in four dimensions are projected into the plane. An octagonal window in the remaining dimensions selects which tiles exist: long-range order without an ordinary repeat.</p></article>
 <article><span class="step">02 / SHAPE</span><h3>A crest has two owners</h3><p>Compact twists and reversible shears bend boundaries and interiors together. Neighbors reuse the same sampled curve. The shapes change continuously while adjacency survives.</p></article>
-<article><span class="step">03 / OCTAVES</span><h3>The silver ratio carries through</h3><p>The tiling’s scale factor, δ = 1 + √2, sets fractal frequencies and foam sizes. Detail rotates by 45° between scales. Large currents and small capillaries share one coordinate field.</p></article></div>
+<article><span class="step">03 / OCTAVES</span><h3>One ocean, four tile families</h3><p>The tiling’s scale factor, δ = 1 + √2, sets fractal frequencies and foam sizes. A common large-scale field flows through every tile. Four categories change fine foam and color at the boundaries, so neighbors have distinct material.</p></article></div>
+<details><summary>Global structure and categorical tile detail</summary><p>Let u = F⁻¹(x) be the shared ocean coordinate, and c(T) one of four labels assigned to tile T. Neighboring tiles receive different labels by coloring the face-adjacency graph. The global ocean field G(u) stays the same in every tile; a category-dependent fine material D changes the foam texture and restrained palette.</p><pre class="equation">u = F⁻¹(x)
+c(T) ∈ {0,1,2,3}; c(T₁) ≠ c(T₂) on a shared edge
+M(x) = material(G(u), D_c(T)(u), variation)
+variation = 0 → common ocean material
+variation &gt; 0 → discrete fine-texture families</pre><p>The geometry and coarse field remain continuous. The complete material intentionally changes at tile boundaries, and the thin seams make those boundaries visible. The finite-patch labels are deterministic; changing the generated patch can change the color assignment.</p></details>
 <details><summary>The construction and its guarantees</summary>
 <p>For j = 0…3, project n ∈ ℤ⁴ with physical directions eⱼ and perpendicular directions fⱼ. Keep points whose perpendicular image falls inside the regular octagon W. Elementary lattice faces become the two tile types.</p>
 <pre class="equation">eⱼ = (cos(jπ/4), sin(jπ/4))
@@ -63,7 +70,7 @@ fBm(x) = C Σⱼ δ^(−hj) · noise((δRσπ/4)ʲx + bⱼ)
 <a href="https://joer.ai/aperiodicity/tilings/">Joe’s aperiodic tilings ↗</a><a href="https://tilings.math.uni-bielefeld.de/substitution/ammann-beenker/">Ammann–Beenker geometry ↗</a><a href="https://arxiv.org/html/1208.3545v1">Octagonal slopes and matching rules ↗</a><a href="https://arxiv.org/html/2506.23388v1">Escher tile deformation ↗</a></div>
 <details class="drafts"><summary>The other unfinished drafts</summary><p>Lava 2 and Lava 3: layered purple noise. Pretext: text on a Möbius strip. Flame: word fire and a gold ring. Knot: a lit three-dimensional loop. Wave: an unfinished particle-fluid experiment. These remain hidden from the homepage. None is being promoted as a polished replacement.</p></details>
 </div></main><footer>Independent mathematical and visual studies · Nicholas Bardy</footer></div>
-<script src="../assets/ocean-tiling-geometry.js?v=octagonal-20261103"></script>
-<script src="../assets/ocean-tessellation.js?v=octagonal-20261103"></script>
-<script src="lab.js?v=octagonal-20261103"></script>
+<script src="../assets/ocean-tiling-geometry.js?v=ocean-tiles-20261103"></script>
+<script src="../assets/ocean-tessellation.js?v=ocean-tiles-20261103"></script>
+<script src="lab.js?v=ocean-tiles-20261103"></script>
 </body></html>
