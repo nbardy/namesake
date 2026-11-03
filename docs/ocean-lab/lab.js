@@ -23,22 +23,21 @@
   function fail(){error.hidden=false;}
   try {
     if(!window.OceanTessellation)throw new Error('Renderer did not load.');
-    renderer=window.OceanTessellation.create(canvas,{variant:'currents',scale:.7,detail:1,curl:5.4,motion:false,seams:true,tileVariation:.65});
+    renderer=window.OceanTessellation.create(canvas,{variant:'currents',scale:.7,detail:1,curl:5.4,motion:false});
   } catch(e){fail();console.error(e);return;}
   function patch(options){
     Object.assign(pending,options);if(frame)return;
     frame=requestAnimationFrame(function(){frame=0;try{renderer.setOptions(pending);pending={};}catch(e){fail();console.error(e);}});
   }
-  ['curl','scale','detail','tileVariation'].forEach(function(key){
-    document.getElementById(key).addEventListener('input',function(event){var n=Number(event.target.value),options={};document.getElementById(key+'-value').value=n.toFixed(key==='scale'||key==='tileVariation'?2:1);options[key]=n;patch(options);});
+  ['curl','scale','detail'].forEach(function(key){
+    document.getElementById(key).addEventListener('input',function(event){var n=Number(event.target.value),options={};document.getElementById(key+'-value').value=n.toFixed(key==='scale'?2:1);options[key]=n;patch(options);});
   });
-  document.getElementById('seams').addEventListener('change',function(event){patch({seams:event.target.checked});});
   document.getElementById('structure').addEventListener('change',function(event){patch({structure:event.target.checked});});
   document.querySelectorAll('[data-view]').forEach(function(button){
     button.addEventListener('click',function(){
       var view=button.dataset.view;document.querySelectorAll('[data-view]').forEach(function(b){b.setAttribute('aria-pressed',String(b===button));});patch({variant:view});
       canvas.setAttribute('aria-label',view==='escher'?'Interlocking ocean shapes on an eightfold aperiodic tessellation':'Fractal ocean currents flowing through interlocking aperiodic tiles');
-      document.getElementById('caption').textContent=view==='escher'?'Complementary crests grow from shared tile boundaries. Each curve belongs to both of its neighbors; the shapes fit because the entire plane is deformed together.':'One ocean flows through the whole pattern. Thin seams reveal the interlocking tiles; four texture families give neighboring tiles distinct fine detail. Turn Tile variation down to compare with the shared ocean alone.';
+      document.getElementById('caption').textContent=view==='escher'?'Complementary crests grow from shared tile boundaries. Each curve belongs to both of its neighbors; the shapes fit because the entire plane is deformed together.':'A shared scalar current field carries silver-ratio fractal detail through the same curved tessellation. Fine structure is part of the common surface, not independent noise in each tile.';
     });
   });
   window.oceanLab={renderer:renderer,setOptions:patch};
