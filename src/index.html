@@ -70,7 +70,7 @@
         </a>
         <a class="project-card" href="https://github.com/nbardy/namesake">
           <h2>This Site</h2>
-          <p>An evolving collection of ocean patterns, visual experiments, and playful ideas.</p>
+          <p>Interactive Elm 0.18 visualizations — the thing running behind this panel right now.</p>
         </a>
         <a class="project-card" href="http://lambdafunk.com">
           <h2>Lambda Funk</h2>
@@ -84,15 +84,10 @@
       var overlay  = document.getElementById('spa-overlay');
       var content  = document.getElementById('overlay-content');
       var closeBtn = document.getElementById('overlay-close');
-      var visualHash = '';
 
       function openPanel(name) {
         var tpl = document.getElementById('tpl-' + name);
         if (!tpl) return;
-        if (!overlay.classList.contains('overlay-visible')) {
-          var current = location.hash.slice(1);
-          visualHash = current === 'about' || current === 'projects' ? '' : location.hash;
-        }
         content.innerHTML = tpl.innerHTML;
         overlay.classList.remove('overlay-hidden');
         overlay.classList.add('overlay-visible');
@@ -104,7 +99,7 @@
         overlay.classList.add('overlay-hidden');
         content.innerHTML = '';
         // Restore visual mode hash if one was set, otherwise clear
-        history.replaceState(null, '', location.pathname + location.search + visualHash);
+        history.replaceState(null, '', location.pathname);
       }
 
       document.querySelectorAll('[data-panel]').forEach(function(btn) {
@@ -138,8 +133,5 @@
     </script>
 
     <script src="assets/fx.js?v=hide-knot-20261103"></script>
-    <script src="assets/ocean-tiling-geometry.js?v=ocean-tiles-20261103"></script>
-    <script src="assets/ocean-tessellation.js?v=ocean-tiles-20261103"></script>
-    <script src="assets/ocean-hero.js?v=ocean-tiles-20261103"></script>
   </body>
 </html>
